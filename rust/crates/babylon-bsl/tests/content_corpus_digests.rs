@@ -18,6 +18,7 @@
 //! retired the five author-visible `rng-draw` conformance fixtures; the
 //! private finite-kernel draw boundary has typed contracts instead.
 use babylon_bsl::reader;
+use std::collections::BTreeMap;
 
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -45,6 +46,7 @@ fn live_michigan_rule_passes_the_native_loader_without_scenario_declarations() {
 
     let vocabulary = BindingVocabulary::default();
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: HashMap::new(),
         exemptions: &[],
     };

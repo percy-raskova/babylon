@@ -789,44 +789,11 @@ mod live_payload_controls {
     use crate::material_runtime::DurableMaterialRuntime;
     use crate::michigan_content::MichiganContentPreset;
     use crate::michigan_material::MichiganDeliveryPreset;
+    use crate::test_support::EventContinuityDatabase;
     use babylon_graph::stable_element::StableElementKey;
+    use postgres::NoTls;
     use postgres::Transaction;
-    use postgres::{Config, NoTls};
-    use std::str::FromStr;
     use uuid::Uuid;
-
-    fn disposable_config() -> Config {
-        assert_eq!(
-            std::env::var("BABYLON_POSTGRES_DISPOSABLE_ACK").as_deref(),
-            Ok("I_UNDERSTAND_THIS_DISPOSABLE_RUNTIME_DROPS_ITS_SCRATCH_DATABASES_AND_ROLES")
-        );
-        let canary = std::env::var("BABYLON_POSTGRES_DISPOSABLE_CANARY")
-            .expect("the fixture variable is bound");
-        assert_eq!(canary.len(), 32);
-        let mut config = Config::from_str(
-            &std::env::var("BABYLON_POSTGRES_TEST_DSN").expect("the fixture variable is bound"),
-        )
-        .expect("the authored JSON matches the declared schema");
-        crate::postgres_catalog::validate_connection_target(&config)
-            .expect("the authored fixture satisfies the rule");
-        assert_eq!(config.get_user(), Some("test"));
-        assert_eq!(config.get_dbname(), Some("postgres"));
-        let actual: Option<String> = config
-            .connect(NoTls)
-            .expect("the test database accepts the connection")
-            .query_one(
-                "SELECT pg_catalog.current_setting('babylon.disposable_runtime',true)",
-                &[],
-            )
-            .expect("the seeded row is present exactly once")
-            .get(0);
-        assert_eq!(actual.as_deref(), Some(canary.as_str()));
-        let database =
-            std::env::var("BABYLON_EVENT_COPY_DATABASE").expect("the fixture variable is bound");
-        assert!(database.starts_with("per337_event_continuity_"));
-        config.dbname(&database);
-        config
-    }
 
     fn payloads() -> Vec<(String, StableBslValue)> {
         let node = StableElementKey::Node {
@@ -1111,7 +1078,8 @@ mod live_payload_controls {
     #[test]
     #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
     fn live_all_nine_event_payload_tags_match_independent_typed_reference() {
-        let config = disposable_config();
+        let database = EventContinuityDatabase::create("payloadtags");
+        let config = database.config().clone();
         let campaign = CampaignId::from_uuid(Uuid::from_u128(
             (u128::from(std::process::id()) << 64) | 0x337_9a11,
         ));
@@ -1181,17 +1149,22 @@ mod live_payload_controls {
     }
     #[test]
     #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "`live_node_refs_share_exact_names_and_preserve_foreign_scenarios` keeps one authored fixture and its assertions together"
+    )]
     fn live_node_refs_share_exact_names_and_preserve_foreign_scenarios() {
-        let config = disposable_config();
+        let database = EventContinuityDatabase::create("nodereferences");
         let campaign = CampaignId::from_uuid(Uuid::from_u128(
             (u128::from(std::process::id()) << 64) | 0x337_9a12,
         ));
         let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
             .create_foundation(&crate::test_support::catalog())
             .expect("the authored catalog builds the foundation");
-        let _runtime = DurableMaterialRuntime::create(&config, campaign, foundation)
+        let _runtime = DurableMaterialRuntime::create(database.config(), campaign, foundation)
             .expect("the test database creates the fixture campaign");
-        let mut client = config
+        let mut client = database
+            .config()
             .connect(NoTls)
             .expect("the test database accepts the connection");
         let before = raw_counts(&mut client, campaign);
@@ -1291,37 +1264,10 @@ mod marker_integrity_controls {
     use crate::material_runtime::DurableMaterialRuntime;
     use crate::michigan_content::MichiganContentPreset;
     use crate::michigan_material::MichiganDeliveryPreset;
+    use crate::test_support::EventContinuityDatabase;
     use postgres::Client;
-    use postgres::{Config, GenericClient, NoTls};
-    use std::str::FromStr;
+    use postgres::{GenericClient, NoTls};
     use uuid::Uuid;
-    fn validated_base_config() -> Config {
-        assert_eq!(
-            std::env::var("BABYLON_POSTGRES_DISPOSABLE_ACK").as_deref(),
-            Ok("I_UNDERSTAND_THIS_DISPOSABLE_RUNTIME_DROPS_ITS_SCRATCH_DATABASES_AND_ROLES")
-        );
-        let canary = std::env::var("BABYLON_POSTGRES_DISPOSABLE_CANARY")
-            .expect("runner supplies the disposable canary");
-        assert_eq!(canary.len(), 32);
-        let dsn =
-            std::env::var("BABYLON_POSTGRES_TEST_DSN").expect("runner supplies the disposable DSN");
-        let config = Config::from_str(&dsn).expect("runner DSN parses");
-        crate::postgres_catalog::validate_connection_target(&config).expect("loopback target");
-        assert_eq!(config.get_user(), Some("test"));
-        assert_eq!(config.get_dbname(), Some("postgres"));
-        let actual: Option<String> = config
-            .connect(NoTls)
-            .expect("canary connection")
-            .query_one(
-                "SELECT pg_catalog.current_setting('babylon.disposable_runtime', true)",
-                &[],
-            )
-            .expect("canary query")
-            .try_get(0)
-            .expect("canary decode");
-        assert_eq!(actual.as_deref(), Some(canary.as_str()));
-        config
-    }
     fn insert_event_test_marker(client: &mut impl GenericClient, campaign: CampaignId) {
         // This rollback-only event fixture deliberately has no territory rows.
         client
@@ -1554,11 +1500,13 @@ mod marker_integrity_controls {
     #[test]
     #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
     fn live_event_deferred_marker_integrity_table() {
-        let mut config = validated_base_config();
-        let database =
-            std::env::var("BABYLON_EVENT_COPY_DATABASE").expect("the fixture variable is bound");
+        let owned = EventContinuityDatabase::create("integrity");
+        let config = owned.config().clone();
+        let database = config
+            .get_dbname()
+            .expect("the owned event database is named")
+            .to_owned();
         assert!(database.starts_with("per337_event_continuity_"));
-        config.dbname(&database);
         let mut guard = config
             .connect(NoTls)
             .expect("owned event integrity database");

@@ -156,6 +156,7 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         last_household_consumption_period: 0,
     };
     let catalog = babylon_material_circuit::MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2, 3]
             .into_iter()
@@ -235,6 +236,7 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
             good_id: good(2),
             unit_id: units(),
             hours_per_unit: 1,
+            units: 1,
         }],
         company_portfolios: None,
         company_payouts: vec![],
@@ -826,6 +828,7 @@ pub(crate) fn producer_retail_opening() -> (MaterialCatalog, MaterialCircuitStat
             good_id: good(1),
             unit_id: units(),
             hours_per_unit: 1,
+            units: 1,
         });
 
     state

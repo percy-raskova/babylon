@@ -350,8 +350,8 @@ pub(super) fn remaining_after_uses(
     Ok((remaining, supply))
 }
 
-/// Select a full single-actor hearing contribution from actual remaining budgets.
-pub(super) fn allocate_hearing_hours(
+/// Select a full single-actor contribution (a hearing invitation or a review contact) from actual remaining budgets.
+pub(super) fn allocate_single_actor_hours(
     config: &OrganizerConfig,
     intent: &PracticeIntent,
     hours: u64,

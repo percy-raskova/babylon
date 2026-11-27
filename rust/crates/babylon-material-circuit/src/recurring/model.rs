@@ -94,6 +94,62 @@ impl HouseholdNeed {
     }
 }
 
+/// A want row as written: 10,000 parts in 10,000.
+pub const WANT_SCALE_ONE_BPS: u32 = 10_000;
+/// The largest scale a want row may carry: a hundred times the row.
+pub const MAX_WANT_SCALE_BPS: u32 = 1_000_000;
+
+/// The tier of a want. Needs are tier 1 and are not a want.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(u8)]
+pub enum WantTier {
+    Comfort = 2,
+    Luxury = 3,
+}
+
+/// What a household account buys, after its needs, when its money reaches it. A flow: what is bought
+/// in a period is used in that period. So many units per person or per household, as a need.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HouseholdWant {
+    pub principal_id: FinalDemandPrincipalId,
+    pub tier: WantTier,
+    pub good_id: GoodId,
+    pub unit_id: UnitId,
+    pub basis: HouseholdNeedBasis,
+    pub units_per_basis: u64,
+    /// Parts in 10,000 of the row's quantity that the account buys: 10,000 is the row as written.
+    pub scale_bps: u32,
+}
+
+impl HouseholdWant {
+    /// This period's quantity from the cohort's counts; the rules of `HouseholdNeed::required_quantity`, then
+    /// the scale: `floor(count x units_per_basis x scale_bps / 10_000)`.
+    /// # Errors
+    /// Refuses the wrong principal, household-based collective wants, zero coefficients and overflow.
+    pub fn quantity(&self, cohort: &HouseholdCohort) -> Result<u64, MaterialCircuitError> {
+        HouseholdNeed {
+            principal_id: self.principal_id,
+            good_id: self.good_id,
+            unit_id: self.unit_id,
+            basis: self.basis,
+            units_per_basis: self.units_per_basis,
+        }
+        .required_quantity(cohort)
+        .and_then(|rows| self.scaled(rows))
+    }
+
+    /// The row's quantity at this want's scale: `floor(quantity x scale_bps / 10_000)`, the row itself at
+    /// 10,000.
+    fn scaled(&self, quantity: u64) -> Result<u64, MaterialCircuitError> {
+        if self.scale_bps == WANT_SCALE_ONE_BPS {
+            return Ok(quantity);
+        }
+        let scaled =
+            u128::from(quantity) * u128::from(self.scale_bps) / u128::from(WANT_SCALE_ONE_BPS);
+        u64::try_from(scaled).map_err(|_| MaterialCircuitError::Arithmetic)
+    }
+}
+
 /// One preferred local retailer per resident good/unit requirement.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HouseholdPurchasePolicy {

@@ -66,6 +66,9 @@ pub struct MemoryGraph {
     /// its member list. Swept by `remove_hyperedge` (a row exists only
     /// while its hyperedge does — ADR185 R2's cascade discipline).
     hyperedge_attributes: HashMap<(HyperedgeId, String), f64>,
+    /// `(hyperedge, member, qname)` -> value: the fields a membership carries
+    /// (Amendment AG (i)). Swept with the hyperedge and with the member.
+    membership_attributes: HashMap<(HyperedgeId, NodeId, String), f64>,
     /// Hyperedge id -> (type, sorted member list). Stored as ONE record per
     /// hyperedge — the toy analogue of a first-class object. A production
     /// store may instead keep incidence edges (Levi); callers cannot tell.
@@ -79,6 +82,18 @@ impl MemoryGraph {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The three existence faults of a membership read or write: no such
+    /// hyperedge, no such node, or a node that is not in the member list.
+    fn require_membership(&self, id: HyperedgeId, member: NodeId) -> Result<(), GraphError> {
+        if self.is_member(id, member)? {
+            Ok(())
+        } else {
+            Err(GraphError {
+                message: format!("{member:?} is not a member of {id:?}"),
+            })
+        }
     }
 
     /// Test-visible edge count (the dyadic half only).
@@ -176,6 +191,13 @@ impl CanonicalState for MemoryGraph {
             .map(|((id, name), value)| (*id, name.clone(), *value))
             .collect()
     }
+
+    fn all_membership_attributes(&self) -> Vec<(HyperedgeId, NodeId, String, f64)> {
+        self.membership_attributes
+            .iter()
+            .map(|((id, member, name), value)| (*id, *member, name.clone(), *value))
+            .collect()
+    }
 }
 
 impl GraphSubstrate for MemoryGraph {
@@ -227,6 +249,12 @@ impl GraphSubstrate for MemoryGraph {
         // by assumption about which hyperedges emptied.
         self.hyperedge_attributes
             .retain(|(hyperedge, _), _| self.hyperedges.contains_key(hyperedge));
+        // A membership's values die with it: rows naming the node, and rows
+        // of every hyperedge the cascade dropped, in one sweep.
+        self.membership_attributes
+            .retain(|(hyperedge, member, _), _| {
+                *member != id && self.hyperedges.contains_key(hyperedge)
+            });
         Ok(())
     }
 
@@ -495,6 +523,8 @@ impl GraphSubstrate for MemoryGraph {
         // attribute rows die with it, never orphaned.
         self.hyperedge_attributes
             .retain(|(hyperedge, _), _| *hyperedge != id);
+        self.membership_attributes
+            .retain(|(hyperedge, _, _), _| *hyperedge != id);
         Ok(())
     }
 
@@ -535,6 +565,59 @@ impl GraphSubstrate for MemoryGraph {
                     "attribute {attribute} was never written on {id:?} — never a default 0.0"
                 ),
             })
+    }
+
+    fn update_membership_attribute(
+        &mut self,
+        id: HyperedgeId,
+        member: NodeId,
+        attribute: &str,
+        value: f64,
+    ) -> Result<(), GraphError> {
+        if !value.is_finite() {
+            return Err(GraphError {
+                message: format!(
+                    "non-finite membership attribute {attribute} on {member:?} in {id:?}"
+                ),
+            });
+        }
+        self.require_membership(id, member)?;
+        // `-0.0` stores as `+0.0`: one value, one set of bytes.
+        let value = if value == 0.0 { 0.0 } else { value };
+        self.membership_attributes
+            .insert((id, member, attribute.to_owned()), value);
+        Ok(())
+    }
+
+    fn membership_attribute(
+        &self,
+        id: HyperedgeId,
+        member: NodeId,
+        attribute: &str,
+    ) -> Result<f64, GraphError> {
+        self.require_membership(id, member)?;
+        self.membership_attributes
+            .get(&(id, member, attribute.to_owned()))
+            .copied()
+            .ok_or_else(|| GraphError {
+                message: format!(
+                    "membership attribute {attribute} was never written on {member:?} in {id:?} \
+                     — never a default 0.0"
+                ),
+            })
+    }
+
+    fn is_member(&self, id: HyperedgeId, member: NodeId) -> Result<bool, GraphError> {
+        let (_, members) = self.hyperedges.get(&id).ok_or_else(|| GraphError {
+            message: format!("no such hyperedge: {id:?}"),
+        })?;
+        if !self.node_exists(member) {
+            return Err(GraphError {
+                message: format!("no such node: {member:?}"),
+            });
+        }
+        // The member list is kept sorted at insert.
+        Ok(members.binary_search(&member).is_ok())
     }
 
     fn members_of(&self, id: HyperedgeId) -> Result<Vec<NodeId>, GraphError> {

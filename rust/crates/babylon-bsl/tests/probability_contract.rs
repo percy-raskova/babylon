@@ -32,7 +32,7 @@ use babylon_graph::memory::MemoryGraph;
 use babylon_graph::stable_element::StableElementResolver;
 use babylon_graph::substrate::GraphSubstrate;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngSeedContext};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[test]
 fn mass_literals_are_exact_unsigned_nanounits() {
@@ -185,6 +185,7 @@ fn compile_rule_probability(
     consts: &HashMap<String, Value>,
 ) -> Result<(Option<FiniteKernel>, Option<FiniteProjection>), ProbabilityError> {
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: HashMap::new(),
         exemptions: &[],
     };
@@ -208,6 +209,7 @@ fn canonical_choose_compiles_once_to_enum_ordered_ir() {
          (branch SparkOutcome/NO_INCIDENT :mass 3m (effects))",
     );
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: HashMap::new(),
         exemptions: &[],
     };
@@ -276,6 +278,7 @@ fn multi_top_form_kernel_paths_retain_the_original_source_coordinate_space() {
         metrics: HashSet::new(),
     };
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields,
         exemptions: &[],
     };
@@ -681,6 +684,7 @@ fn quantize_mass_uses_declared_types_for_fields_metrics_and_accessors() {
         .declare("Flag", &["OFF".to_owned(), "ON".to_owned()])
         .expect("the scenario declares the authored entity");
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: HashMap::from([
             (
                 "demo/bool".to_owned(),
@@ -862,6 +866,7 @@ fn content_set_linking_refuses_duplicate_samples_and_nonadjacent_projections() {
         metrics: HashSet::new(),
     };
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields,
         exemptions: &[],
     };
@@ -926,6 +931,7 @@ fn kernels_and_projections_require_a_stable_subject_carrier_at_load() {
         metrics: HashSet::new(),
     };
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields,
         exemptions: &[],
     };
@@ -1061,6 +1067,7 @@ fn adjacent_projection_requires_the_kernel_subject_carrier_at_its_sample_path() 
         metrics: HashSet::new(),
     };
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields,
         exemptions: &[],
     };
@@ -1212,6 +1219,7 @@ fn a_finite_projection_refuses_graph_global_metric_bindings_at_load() {
     )
     .expect("the authored scenario compiles");
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: scenario.fields.clone(),
         exemptions: &[],
     };
@@ -1266,6 +1274,7 @@ fn load_mass_probe(source: &str) -> Result<LoadedRule, LoadError> {
         metrics: HashSet::new(),
     };
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields,
         exemptions: &[],
     };
@@ -1435,6 +1444,7 @@ fn authored_probability_event_payloads_refuse_literals_fields_exprs_and_consts()
     )
     .expect("the authored scenario compiles");
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: scenario.fields.clone(),
         exemptions: &[],
     };
@@ -1624,6 +1634,7 @@ fn detached_forecast_applies_each_real_branch_and_runs_the_adjacent_recognizer()
     let scenario = scenario::load_scenario(scenario_source, &mut graph)
         .expect("the authored scenario compiles");
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: scenario.fields.clone(),
         exemptions: &[],
     };
@@ -1718,6 +1729,7 @@ fn runtime_never_evaluates_an_unselected_branch_body() {
     let scenario = scenario::load_scenario(scenario_source, &mut graph)
         .expect("the authored scenario compiles");
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: scenario.fields.clone(),
         exemptions: &[],
     };
@@ -1793,4 +1805,136 @@ fn runtime_never_evaluates_an_unselected_branch_body() {
             .to_bits(),
         1.0_f64.to_bits()
     );
+}
+
+/// The membership accessor is a payload read like `field-of` for every decision `probability`
+/// takes about one (§2.10): its declared type decides what it is, and a read of a hyperedge's
+/// membership is never subject-local. Each case runs the `field-of` twin beside it.
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one authored sequence of the four twin decisions"
+)]
+fn the_membership_accessor_is_decided_like_field_of_in_probability_analysis() {
+    let mut enums = spark_enums();
+    let flag_type = enums
+        .declare("Flag", &["OFF".to_owned(), "ON".to_owned()])
+        .expect("the scenario declares the authored entity");
+    let field = |ty: BslType, kind: FieldKind| FieldDecl { ty, kind };
+    let types = TypeEnv {
+        membership_fields: BTreeMap::from([
+            ("demo/count".to_owned(), "SOCIAL_CLASS".to_owned()),
+            ("demo/share".to_owned(), "SOCIAL_CLASS".to_owned()),
+            ("demo/flag".to_owned(), "SOCIAL_CLASS".to_owned()),
+        ]),
+        fields: HashMap::from([
+            (
+                "demo/count".to_owned(),
+                field(BslType::Int, FieldKind::Extensive),
+            ),
+            (
+                "demo/share".to_owned(),
+                field(BslType::Probability, FieldKind::Intensive),
+            ),
+            (
+                "demo/flag".to_owned(),
+                field(BslType::Enum(flag_type), FieldKind::NotApplicable),
+            ),
+        ]),
+        exemptions: &[],
+    };
+    let compile = |source: &str, role: RuleRole| {
+        let rule = reader::read(source)
+            .expect("the fixture reader returns its authored facts")
+            .0;
+        let bindings = bindings::parse_bindings(&rule).expect("the authored bindings parse");
+        probability::compile_rule_probability(
+            &rule,
+            &[0],
+            &contract(role),
+            &enums,
+            &types,
+            &bindings,
+            &HashMap::new(),
+            &HashSet::new(),
+        )
+        .map(|_| ())
+    };
+    let quantize = |operand: &str| {
+        compile(
+            &format!(
+                "(rule demo/spark :role mechanic :evidence designed \
+             :material-basis \"typed quantization\" :fuel 64 \
+             (bindings (binding spark-mass :expr (quantize-mass {operand}))) \
+             (effects (choose :sample struggle/spark :slot 0 \
+               (branch SparkOutcome/EXCESSIVE_FORCE :mass spark-mass (effects)) \
+               (branch SparkOutcome/NO_INCIDENT :mass 1m (effects)))))"
+            ),
+            RuleRole::Mechanic,
+        )
+    };
+    let invalid = |result: Result<(), ProbabilityError>| match result {
+        Err(ProbabilityError::InvalidForm { message, .. }) => message,
+        other => panic!("expected a located refusal, got {other:?}"),
+    };
+    // The operands `self self` below are placeholders. These are static checks, which read only
+    // the field's name at item index 3; no served rule binds a hyperedge and its member this way.
+    // (1) quantize-mass takes an ordinary numeric operand: a numeric payload loads, an
+    // enum-typed one is refused with the message its `field-of` twin gets.
+    quantize("(membership-field-of self self demo/share)").expect("a numeric payload loads");
+    let twin = invalid(quantize("(field-of self demo/flag)"));
+    let got = invalid(quantize("(membership-field-of self self demo/flag)"));
+    assert_eq!(got, twin);
+    assert!(got.contains("statically Int/Real-lane"), "{got}");
+    // (2) an Int payload over an Int payload is the refused Int division, as for `field-of`.
+    let twin = invalid(quantize(
+        "(/ (field-of self demo/count) (field-of self demo/count))",
+    ));
+    let got = invalid(quantize(
+        "(/ (membership-field-of self self demo/count) \
+            (membership-field-of self self demo/count))",
+    ));
+    assert_eq!(got, twin);
+    assert!(got.contains("statically Int/Real-lane"), "{got}");
+    quantize(
+        "(/ (membership-field-of self self demo/count) \
+            (membership-field-of self self demo/share))",
+    )
+    .expect("an Int over a Real-lane payload is not the refused Int division");
+    // (3) a Probability-typed payload cannot be authored into an event payload; another
+    // type there loads.
+    let emit = |value: &str| {
+        compile(
+            &format!(
+                "(rule demo/recognizer :role recognizer :evidence derived \
+             :material-basis \"event likelihood is derived\" :fuel 64 \
+             (bindings) (effects (emit EventType/X (x {value}))))"
+            ),
+            RuleRole::Recognizer,
+        )
+    };
+    let twin = invalid(emit("(field-of self demo/share)"));
+    let got = invalid(emit("(membership-field-of self self demo/share)"));
+    assert_eq!(got, twin);
+    assert!(got.contains("event likelihood is derived"), "{got}");
+    emit("(membership-field-of self self demo/count)")
+        .expect("a payload of another type is not a Probability");
+    // (4) a finite projection must be subject-local: a membership read is of a hyperedge's
+    // pair, never of the subject alone, so it is refused like a `field-of` of another entity.
+    let project = |value: &str| {
+        compile(
+            &format!(
+                "(rule demo/recognizer :role recognizer :evidence derived \
+             :projects-kernel struggle/spark \
+             :material-basis \"projection locality\" :fuel 64 \
+             (bindings) (effects (emit EventType/EXCESSIVE_FORCE (x {value}))))"
+            ),
+            RuleRole::Recognizer,
+        )
+    };
+    project("(field-of self demo/count)").expect("a read of the subject is local");
+    let twin = invalid(project("(field-of other demo/count)"));
+    let got = invalid(project("(membership-field-of self self demo/count)"));
+    assert_eq!(got, twin);
+    assert!(got.contains("subject-local"), "{got}");
 }

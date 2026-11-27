@@ -110,9 +110,11 @@ pub(in crate::simulation_experiment::report) fn effect_name(effect: &EffectSigna
         EffectSignature::OrganizerProducts => "organizer-products".to_owned(),
         EffectSignature::OrganizerPractice => "organizer-practice".to_owned(),
         EffectSignature::CityPdObserve => "city-pd-observe".to_owned(),
+        EffectSignature::CountyReview => "county-review".to_owned(),
         EffectSignature::NodeField(field) => format!("node-field:{field}"),
         EffectSignature::EdgeField(field) => format!("edge-field:{field}"),
         EffectSignature::HyperedgeField(field) => format!("hyperedge-field:{field}"),
+        EffectSignature::MembershipField(field) => format!("membership-field:{field}"),
         EffectSignature::Event(event) => format!("event:{event}"),
         EffectSignature::Shape(verb) => format!(
             "shape:{}",

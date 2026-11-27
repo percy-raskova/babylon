@@ -69,7 +69,16 @@ fn principal(label: &str) -> FinalDemandPrincipalId {
 fn child(builder: &Builder<'_>, label: &str, county: &str, donor: bool) -> Result<AidChildCapture> {
     let location = location(county)?;
     let budget = if donor {
-        Key::EarningNonowner
+        if builder
+            .policy
+            .households
+            .next_forty_households_bps
+            .is_some()
+        {
+            Key::EarningLowerPaidHalf
+        } else {
+            Key::EarningNonowner
+        }
     } else {
         Key::NoEarnerNonowner
     };
@@ -426,6 +435,7 @@ mod tests {
             households,
             residents,
             policy.households.private_owner_households_bps,
+            policy.households.next_forty_households_bps,
         )
         .expect("the fixture households fit the authored cohorts");
         let time =
@@ -444,6 +454,7 @@ mod tests {
                     crate::national_ages::national_age_reference().expect("county age margins"),
                 ),
                 policy: &policy,
+                pay: None,
                 source_hash: content_digest::sha256_of(bytes),
             },
         )

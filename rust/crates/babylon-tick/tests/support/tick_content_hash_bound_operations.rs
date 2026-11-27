@@ -1,6 +1,6 @@
 //! Production-operation execution for the semantic maximum/+1 recipes.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use babylon_bsl::evaluator::Value as BslValue;
 use babylon_bsl::exemptions::IntensiveAggregationExemption;
@@ -190,6 +190,7 @@ fn execute_governance(governance: String) -> Result<(), IdentityCodecError> {
         .into_boxed_slice(),
     );
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: HashMap::new(),
         exemptions,
     };
@@ -617,6 +618,9 @@ impl CanonicalState for GeneratedState {
     fn all_hyperedge_attributes(&self) -> Vec<(HyperedgeId, String, f64)> {
         Vec::new()
     }
+    fn all_membership_attributes(&self) -> Vec<(HyperedgeId, NodeId, String, f64)> {
+        Vec::new()
+    }
 }
 
 fn one_node_resolver(name: &str) -> StableElementResolver {
@@ -752,6 +756,7 @@ fn execute_prepared(recipe: &Value) -> Result<(), IdentityCodecError> {
 
 fn empty_types() -> TypeEnv {
     TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: HashMap::new(),
         exemptions: &[],
     }
@@ -915,6 +920,7 @@ fn prepared_exemption_bytes(recipe: &Value) -> Result<(), IdentityCodecError> {
     });
     let exemptions = Box::leak(rows.into_boxed_slice());
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: HashMap::new(),
         exemptions,
     };
@@ -1163,6 +1169,7 @@ fn stable_graph_hyperedge_rows(recipe: &Value) -> Result<(), StableIdentityError
             edge_f64: vec![],
             node_currency: vec![],
             hyperedge_f64: vec![],
+            membership_f64: Vec::new(),
             hyperedges: (0..count)
                 .map(|index| {
                     (

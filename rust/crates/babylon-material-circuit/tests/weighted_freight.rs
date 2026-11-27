@@ -35,6 +35,7 @@ fn competition() -> (MaterialCatalog, MaterialCircuitState) {
         };
         (
             MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+                market_clearing: None,
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 merchants: vec![],
                 handling_coefficients: vec![],
@@ -508,5 +509,13 @@ fn successor_refusal_registry_includes_accounting_and_rejects_unknown_codes() {
         MaterialCircuitError::try_from(37),
         Ok(MaterialCircuitError::HouseholdLifecycleInvariant)
     );
-    assert!(MaterialCircuitError::try_from(38).is_err());
+    assert_eq!(
+        MaterialCircuitError::try_from(38),
+        Ok(MaterialCircuitError::MarketClearingInvariant)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(39),
+        Ok(MaterialCircuitError::PublicProgramInvariant)
+    );
+    assert!(MaterialCircuitError::try_from(40).is_err());
 }

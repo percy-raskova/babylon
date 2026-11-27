@@ -1,0 +1,77 @@
+ADR311_host_policy_v14:
+  status: accepted
+  date: '2026-11-19'
+  title: Babylon's Rust build budget rises to eight CPUs and eight Cargo jobs
+  issue: PER-368
+  evidence_class: Designed
+  context: |
+    On 19 November 2026 the Director said: "raise it to a reasonable amount to
+    make things faster without going all the way". The values below are the
+    lead's choice under that instruction.
+
+    Measurements on 19 November 2026 under policy v13 (four CPUs and four
+    Cargo jobs) on a host with 12 cores and 31 GB of memory: the CPU quota
+    throttled the Babylon budget in 52% of its accounting periods (150,686 of
+    287,351). A full workspace check took under 1 minute of lint, 22 to 29
+    minutes compiling 255 test binaries, and under 5 minutes running 4,761
+    tests. The soft memory limit was reached 99,397 times with no hard-limit
+    and no out-of-memory event. The budget's memory was mostly file cache:
+    4,861 MiB of cache against 732 MiB of program memory in one idle sample,
+    with a 10.7 GB peak. The task count peaked at 154 of 512.
+
+    On 18 August 2026 the Director approved eight Cargo jobs for this
+    repository (docs/superpowers/plans/2026-08-18-bsl-refactor-program.md).
+    ADR246 lowered it to four when the two-repository boundary was introduced.
+  decision: |
+    Host policy v14 gives Babylon builds 8 CPUs and 8 Cargo jobs. NNSims keeps
+    4 CPUs and 4 jobs.
+
+    codex-rust-babylon.slice sets CPUQuota=800%, MemoryHigh=16G and
+    MemoryMax=20G, and keeps MemorySwapMax=2G, IOWeight=500 and TasksMax=512.
+    codex-rust-nnsims.slice keeps CPUQuota=400%, MemoryHigh=10G, MemoryMax=12G,
+    MemorySwapMax=2G, IOWeight=500 and TasksMax=512. The parent
+    codex-rust.slice keeps CPUQuota=800%, MemoryHigh=20G, MemoryMax=24G,
+    MemorySwapMax=4G, IOWeight=500 and TasksMax=1024. Only the version marker
+    in those two units changes.
+
+    The job limit is per repository: Babylon 8, NNSims 4. The dispatcher
+    applies the repository's own limit to CARGO_BUILD_JOBS and to its default
+    when the variable is unset, to every -j and --jobs spelling, to job counts
+    in Cargo config and environment aliases, and to Cargo config build.jobs.
+    Each refusal names the repository's number. The dispatcher and the
+    installer check the loaded Babylon slice at its new exact values.
+
+    The combined budget of both repositories is unchanged: the parent slice
+    still bounds both at 8 CPUs, 24G of memory and 4G of swap, so no new total
+    is granted to Rust builds. Babylon may now use the whole parent CPU quota
+    when NNSims is idle.
+
+    CODEX_RUST_HOST_POLICY_VERSION is 14. An installed v13 upgrades to v14 and
+    keeps its immutable v13 directory. Same-version divergence and downgrades
+    remain refused, so a v13 install after v14 is refused. Remote recognition,
+    path and argument controls, target directories, the cargo-worktree-budget
+    storage budget, sccache keys and the bootstrap toolchain selector are
+    unchanged. The repository's `.mise.toml` and tools/run_rust_postgres.sh set
+    eight jobs, the exact ceiling for an ordinary clone without the dispatcher.
+  rejected:
+    - Twelve CPUs, the whole host: the instruction was to raise the budget without going all the way.
+    - Raising the parent slice: it would grant Rust builds a larger combined total.
+    - Raising NNSims with Babylon: NNSims has not adopted or qualified this bundle.
+  supersedes:
+    - ADR246_codex_rust_host_boundary (Babylon's resource ceilings only)
+    - ADR290_host_policy_v12 (Babylon's resource ceilings only)
+  deployment_limits: |
+    This decision records Babylon's v14 bytes only. NNSims has not adopted or
+    qualified this bundle. Once v14 is installed, the v13 installer refuses to
+    downgrade the host. Coordination and qualification in NNSims are required
+    before describing v14 as a shared cross-repository release. This decision
+    does not assert that the real host has been upgraded. Until it is, the
+    installed v13 dispatcher refuses this checkout's eight-job setting.
+  verification: |
+    Host policy contracts admit eight jobs for Babylon and four for NNSims by
+    every route, refuse nine and five with an error that names the limit, and
+    check each slice unit and each loaded slice at its exact values. Isolated
+    installer fixtures upgrade an original v12 and an original v13 to v14,
+    preserve each installed directory, and refuse a later v12 or v13 install
+    and a divergent v14. A repository test pins every v14 bundle file by
+    SHA-256.

@@ -37,6 +37,8 @@ mod live_tests {
     use postgres::Error as PostgresError;
     #[path = "city_pd_atomic.rs"]
     mod city_pd_atomic;
+    #[path = "live_membership_values.rs"]
+    mod live_membership_values;
     #[path = "material_open.rs"]
     mod material_open;
     #[path = "organizer_allocation_atomic.rs"]
@@ -49,6 +51,7 @@ mod live_tests {
     use crate::michigan_content::MichiganContentPreset;
     use crate::michigan_material::MichiganDeliveryPreset;
     use crate::michigan_material::MichiganMaterialCatalog;
+    use crate::test_support::EventContinuityDatabase;
     use babylon_kernel::content_digest;
     use babylon_material_circuit::MaterialCatalog;
     use babylon_tick::material_world::MaterialWorldRegister;
@@ -441,15 +444,6 @@ mod live_tests {
         );
         database.cleanup();
     }
-    fn event_control_config() -> Config {
-        let mut config = validated_base_config();
-        let database =
-            std::env::var("BABYLON_EVENT_COPY_DATABASE").expect("the fixture variable is bound");
-        assert!(database.starts_with("per337_event_continuity_"));
-        config.dbname(&database);
-        config
-    }
-
     fn event_control_runtime(
         config: &Config,
         suffix: u128,
@@ -524,7 +518,8 @@ mod live_tests {
     #[test]
     #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
     fn live_event_copy_matches_reference_rows_and_rolls_back() {
-        let config = event_control_config();
+        let database = EventContinuityDatabase::create("copy");
+        let config = database.config().clone();
         let mut runtime = event_control_runtime(&config, 0x337_c0f1);
         let campaign = runtime.campaign_id();
         let actions = OrderedPracticeActionBatch::empty(
@@ -664,7 +659,8 @@ mod live_tests {
     #[test]
     #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
     fn live_event_marker_continuity_is_atomic_and_immutable() {
-        let config = event_control_config();
+        let database = EventContinuityDatabase::create("marker");
+        let config = database.config().clone();
         let mut runtime = event_control_runtime(&config, 0x337_ce11);
         let campaign = runtime.campaign_id();
         let mut client = config
@@ -755,7 +751,8 @@ mod live_tests {
     #[test]
     #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
     fn live_event_arrays_refuse_shape_null_and_inactive_lanes_atomically() {
-        let config = event_control_config();
+        let database = EventContinuityDatabase::create("arrays");
+        let config = database.config().clone();
         let runtime = event_control_runtime(&config, 0x337_a221);
         let campaign = runtime.campaign_id();
         let mut client = config
@@ -780,7 +777,8 @@ mod live_tests {
     #[test]
     #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
     fn live_event_marker_refuses_chunk_gap_missing_choice_and_orphan_field() {
-        let config = event_control_config();
+        let database = EventContinuityDatabase::create("guard");
+        let config = database.config().clone();
         let runtime = event_control_runtime(&config, 0x337_a222);
         let campaign = runtime.campaign_id();
         let mut client = config

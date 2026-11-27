@@ -1,0 +1,247 @@
+ADR306_household_units_in_wayne:
+  title: Give each Wayne household unit its own account, cut once from its budget group at the opening
+  date: '2026-11-20'
+  status: accepted
+  issue: PER-369
+  evidence_class: Designed
+  authority:
+    - >-
+        Director, 2026-11-20, on the aim of the slice: "to give richness to the
+        "NPC"s and enhance their agency with NPCs being household units and
+        social classes".
+    - >-
+        Director, 2026-11-20, on the two directions for the first land relation:
+        "i approve of direction 2 which you chose, with that caveat". Direction
+        2: first each Wayne unit holds its own money, then its home (design 2).
+    - >-
+        Director, 2026-11-20, on the rule of thirds in step A, chose "Measure
+        now, bind with homes". The Director added: "remember that the top 1% and
+        the top 9% can also be landlords and own multiple homes they don't live
+        in, so part of their class interests especially the 1% thru property
+        management companies, those can accrue wealth and income that way too.
+        be sure to factor that in".
+    - >-
+        Director, 2026-11-20, approved the design with the answers of its
+        section 13 written in, and asked for the plan of step A (design 13, item
+        11).
+    - >-
+        ADR302 ruling R1: totals add, a rate is one total over another, a split
+        is declared, and a rule decides for a household from that household's
+        own figures.
+    - >-
+        ADR184: capacity belongs to organizations, and a ranking by yield is an
+        allocation.
+    - >-
+        ADR182: counts are public and dollar figures are earned by contact.
+  context: |
+    The County Review counts Wayne's households by position, but the engine
+    holds money for only eight budget groups. A budget group's households share
+    one purse, so a rule that reads a household's money reads the group's
+    average, and the Director's aim is to give the people of the game richness
+    and agency. The design
+    (docs/superpowers/specs/2026-11-20-households-and-homes-design.md) cuts each
+    splittable budget group into household units that hold their own money,
+    then, in a later step B, their homes. This record holds the rulings of step
+    A. It was written from the plan's mapping of the code, which found that the
+    first form of the design could not stand against today's Wayne (the aid
+    donors lie in two bands) and that the roster has to be made from the
+    opening's own rows.
+  decision: |
+    R1. THE HOUSEHOLD UNIT. The households of one Wayne budget group that share
+    one purse, and whose three answers never change: the budget group, the crew
+    their people were bound to at the opening or none, and the band at the
+    opening. It is an account of a kind the engine has (principal, cohort,
+    budget, subject). No new kind of account.
+
+    R2. IDENTITY. principal = SHA-256(`NationalHouseholdUnitV1\0` || group
+    principal bytes || pooled opening member id bytes, or 32 zero bytes with no
+    crew || band byte: top 1% 1, next 9% 2, next 40% 3, bottom 50% 4). The unit
+    with the most households keeps the group's own account. A tie goes to the
+    lower band, then to the unit with no crew, then the build refuses by name.
+
+    R3. ONE PURSE, OWN FIGURES. A household's labor figures are its position's.
+    Its money is its unit's. A unit pays or buys for as many households as its
+    cash covers, and the rest go without (ADR302 R1, third rule). A figure "for
+    each household" is a rate of two of the unit's totals (the second rule).
+
+    R4. ONE PLACEMENT, RUN ONCE. The County Review's placement runs once, on the
+    pooled groups, inside the opening build and before money is wired. Each
+    distinct (group, crew, band) of a splittable group is a unit. The opening
+    keeps the rows. At capture the roster is made from them by
+    `opening_roster_from_rows` and is never placed again, because placing again
+    would move households between bands. Law: `from_rows(c, k, opening_roster(c,
+    k, [])·rows, r) = opening_roster(c, k, r)`.
+
+    R5. NAMED GROUPS WHOLE. The claimants, the aid donors, the aid partners and
+    collective residence each stay one unit, with accounts, members and
+    employment rows untouched, even in two bands. Their positions keep their
+    bands. A figure by band divides the unit's total by households, by largest
+    remainder. This replaces the first form of the design, which refused today's
+    Wayne.
+
+    R6. THE OPENING SPLIT. Cash, goods, needs and support follow the engine's
+    formulas on the unit's counts. Persons = labor force + a households-share of
+    the other adults and of the children, by largest remainder; eligible = labor
+    force + other adults. A unit with fewer persons than households refuses the
+    campaign by name. A crew in two bands becomes two members (same site, labor
+    unit and pay mode), with the unit as payee. Business shares and ages split
+    in two stages: to groups as today, then to units by households. Order of
+    every split: band from the bottom 50% up, no crew first, more households,
+    more labor force, and as the last tie only, the canonical order of the
+    pooled member id. The other units of a selected group join the detail.
+
+    R7. WHAT THE COUNTS DO NOT EXPLAIN. The unit that keeps the group's account
+    keeps the remainder: its cash and each stock are the pooled seed's figure
+    less the other units' formula figures, refused if negative (the aid
+    recipient's endowment is kept at its parent in the same way).
+
+    R8. WAYNE ONLY, ON ASKING. Units exist only under a policy's
+    `[household_units]` for the County Review's county. It compiles as
+    `national-world-v14` (`national-world-v13` is the repaired economy that
+    clears by price, ADR312). Every earlier compiler gives the same bytes. `grain =
+    "group"` gives the pooled opening value for value, apart from the
+    identifiers the engine hashes from the policy text (the aid mandates' ids
+    and source hash, the commitments that carry them, the config's policy
+    digest) and the labels of R14.
+
+    R9. THE ORDER OF GOING WITHOUT. A short unit pays for food, materials,
+    utility, housing, household services and public provision, in that order;
+    storable goods before services. Buying food and materials includes
+    refilling the pantry. Amended 2026-11-20 by ADR312 P7: the order is the
+    campaign's order of paying, which every household of the campaign follows.
+    It is not a ranked rule of Wayne's units alone, and a unit pays the price
+    of the market, which rises when the seller is short.
+
+    R10. TAX COLLECTED LAST. As today. The list ranks a household by the wage
+    tax collected from its own unit. A unit that spent its cash on needs stands
+    lower, recorded as "ranked lower: tax not collected".
+
+    R11. A HOUSEHOLD THAT LEAVES. ADR302 R4(6) and R7 stand. Proof: a unit
+    closes at min(households, persons), and its labor force is cut in the same
+    period to at most the closing eligible. Each crew row holds someone in the
+    labor force (refused by name at the opening otherwise), so crew households
+    <= labor force <= closing households, and crewless households >= leavers.
+    `HouseholdsBelowLaborHouseholds` stands. Nothing is clamped.
+
+    R12. THE COUNTY REVIEW ON UNITS. Each unit is a County Review group: its own
+    collected tax over its own taxed wages, its own free hours, its own support
+    line. Its facts gain its purse: closing cash, net assets from its capital
+    account, wage tax assessed, and for each need the amounts required, unmet,
+    unpaid and unsupplied and the cost. Went without = ceil(unmet x households /
+    required). Under v14 a county group has a business share by its budget key
+    (`HouseholdBudgetKey::owner_exposure`), not by how its shares rounded.
+
+    R13. WHAT IS PUBLIC. Public: the counts of who went without (by need, band
+    and unit), the one sentence for each unit, each band's share of household
+    wealth in basis points adding to 10,000, and each band's ownership pay as a
+    share of the cost of its needs. Dollar figures of a unit are earned by
+    contact (ADR182). A unit's households stay earned. A unit is earned when any
+    contacted position is one of its positions. The went-without counts and the
+    flags "not supplied" and "wage tax not collected in full" are public.
+
+    R14. WORDS. On screen, "household unit" for the new object and "relief unit"
+    for the county's support. Budget groups read "with a business share" and "no
+    business share", and "owner" is kept for homes. Stored field names do not
+    change. This amends ADR269's word on screen only. Its "private-owner
+    exposure" keeps its engine meaning, and the rest of ADR269 stands. The
+    organizer archive's sentence about what the county could pay says "relief
+    units" for every campaign. It is derived text, not a stored field.
+
+    R15. THE LAW IN STEP A. The thirds are measured band by band in step A and
+    bind step B's opening, with homes. This amends ADR305 R2.
+
+    R16. THE RECORDS. Amends ADR301 R2 and R3, ADR302 R2 and R5, and ADR305 R2
+    in place (they are unmerged), and ADR269 by R14. ADR208 R9 is applied, not
+    amended.
+  calls:
+    - >-
+        The household unit is the households of one budget group with one purse
+        and the same crew and band, with the rule of identity of R2 (design 7.1,
+        7.2).
+    - >-
+        A household's labor figures are its position's and its money is its
+        unit's; a figure for each household is a rate of two totals (design 5,
+        7.1).
+    - >-
+        The claimants, the aid donors, the aid partners and collective residence
+        stay whole, even in two bands (design 7.1).
+    - >-
+        The opening's split of a group among its units, with the order of R6 and
+        the canonical member id as the last tie only (design 7.2).
+    - 'The unit that keeps the group''s account keeps the remainder of the pooled seed (design 7.2).'
+    - >-
+        Units exist only on asking, compile as national-world-v14, and give the
+        pooled opening value for value under `grain = "group"`, apart from the
+        identifiers hashed from the policy text and the labels of R14 (design
+        7.1, 7.6).
+    - >-
+        Under v14 a county group has a business share by its budget key,
+        `HouseholdBudgetKey::owner_exposure`, and not by how its shares rounded
+        (design 7.4).
+    - >-
+        A short unit buys in the order food, materials, utility, housing,
+        household services, public provision (design 7.3).
+    - >-
+        A household that leaves is taken from rows with nobody in the labor
+        force, by the rule that stands (design 7.3).
+    - >-
+        Counts, shares and flags are public; a unit's households stay earned,
+        and a unit is earned when any contacted position is one of its positions
+        (design 7.5).
+    - >-
+        "Household unit" and "relief unit" on screen, and "relief units" in the
+        organizer archive's sentence about what the county could pay, for every
+        campaign, as derived text and not a stored field (design 7.1, 8).
+    - >-
+        Amended on 2026-11-21 by ADR315. The units' own accounts stand as
+        decided here. The homes part of the design changes: nations are
+        hyperedges over household groups, homes exist in every place, a holder
+        lets its own homes or hires the company, rent is the upkeep and the
+        holder's take, values move and equity is weighed, mortgages are loans
+        from banks and a lender forecloses, a tenant loses a home by the law's
+        stages, and tenants get a claim at the County Review.
+  alternatives_rejected:
+    - 'A ledger inside the pooled account (design 6).'
+    - 'A unit for every position (design 6).'
+    - 'Refusing an opening that cuts a named group, the first form of design 7.1.'
+    - 'Placing again on units at capture (design 7.2). It would move households between bands.'
+    - 'A new rule that takes leavers from crew rows, the first form of design 7.3.'
+    - 'Cutting every need in proportion, and need first with the pantry last (design 7.3).'
+    - 'Taking wage tax when the wage is paid (design 7.3).'
+    - 'Dollars by band, because the top 1% is one unit (design 7.5).'
+    - 'Binding the thirds at step A''s opening (design 7.2). The Director chose to measure now and bind with homes.'
+  open_questions:
+    - >-
+        Closed on 2026-11-20 by ADR312. This question said a short seller
+        serves its buyers in `order_id` order. That was wrong: the engine
+        shares a short stock in proportion to what each buyer ordered, and only
+        the last indivisible units go in identifier order
+        (`babylon-material-circuit/src/transition/outbound/orders.rs`,
+        `limit_allocations`). The Director then ruled that a short market
+        clears by price inside the period.
+    - >-
+        If Task 4's report shows the top 1% unit going without, does the
+        division of the shares between the top 1% and the next 9% move into step
+        A by a small amendment (design 7.2, 12)?
+    - >-
+        The statements of step A that the plan's mapping of the code corrected
+        after approval, for the Director to check (design 13): a named group in
+        two bands stays one unit; the roster is made from the opening's own rows
+        and one unit keeps the group's account; the rule for a household that
+        leaves stands as it is; one unit for each group gives the old opening
+        value for value and not byte for byte; the census table is published in
+        six parts.
+  verification: |
+    The law of R4 and the leaving proof of R11 in the kernel (Task 2). The
+    add-back of design 7.6 and `grain = "group"` (Task 4). The tick test of R11
+    (Task 5). The recorded playthroughs (Task 8).
+  related:
+    - ADR315_homes_rent_and_nation
+    - ADR182_derivation_inspector_rulings
+    - ADR184_capacity_belongs_to_organizations
+    - ADR208_docket_sitting_2026_08_17
+    - ADR269_sparse_household_budgets
+    - ADR300_amendment_am_no_imposed_functional_form
+    - ADR301_county_review_session
+    - ADR302_household_roster_and_counting
+    - ADR305_rule_of_thirds_anchoring_law

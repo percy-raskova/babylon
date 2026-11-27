@@ -287,6 +287,12 @@ fn opening_role(report: &HouseholdPeriodReport) -> String {
         HouseholdBudgetKey::NoEarnerOwner => "No historical earnings · modeled business ownership",
         HouseholdBudgetKey::CollectiveResidence => "Collective residence",
         HouseholdBudgetKey::PooledExternal => "Pooled external residents",
+        HouseholdBudgetKey::EarningLowerPaidHalf => {
+            "Historical earnings · lower-paid half · no modeled business ownership"
+        }
+        HouseholdBudgetKey::EarningBetterPaidForty => {
+            "Historical earnings · better-paid 40% · no modeled business ownership"
+        }
     };
     let subject = role
         .authored_subject
@@ -506,6 +512,24 @@ mod tests {
         assert_eq!(
             opening_role(&report),
             "Opening budget · Pooled external residents"
+        );
+    }
+
+    #[test]
+    fn opening_roles_name_the_bands() {
+        let mut report = closed_household();
+        let role = report.opening_role.as_mut().expect("captured opening role");
+        role.authored_subject = None;
+        role.budget = HouseholdBudgetKey::EarningLowerPaidHalf;
+        assert_eq!(
+            opening_role(&report),
+            "Opening budget · Historical earnings · lower-paid half · no modeled business ownership"
+        );
+        let role = report.opening_role.as_mut().expect("captured opening role");
+        role.budget = HouseholdBudgetKey::EarningBetterPaidForty;
+        assert_eq!(
+            opening_role(&report),
+            "Opening budget · Historical earnings · better-paid 40% · no modeled business ownership"
         );
     }
 

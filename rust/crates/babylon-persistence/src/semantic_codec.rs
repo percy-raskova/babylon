@@ -382,6 +382,23 @@ pub(crate) fn encode_stable_graph_hyperedge_f64(
         |payload| append_f64(payload, value),
     )
 }
+pub(crate) fn encode_stable_graph_membership_f64(
+    hyperedge: &str,
+    member: &str,
+    qname: &str,
+    value: f64,
+) -> Result<CommittedTickRow, SemanticCodecError> {
+    compose_row(
+        CommittedTickRowFamily::Graph,
+        8,
+        |key| {
+            append_utf8(key, hyperedge)?;
+            append_utf8(key, member)?;
+            append_utf8(key, qname)
+        },
+        |payload| append_f64(payload, value),
+    )
+}
 pub(crate) fn encode_world_register(
     register_name: &str,
     value: &StableBslValue,

@@ -19,6 +19,7 @@ fn reply(payer: i128, gift: i128, price: i128) -> RuntimeSessionResponse {
             campaign_id: Some(Uuid::from_u128(1).to_string()),
         },
         snapshot: Box::new(OrganizerSnapshot {
+            county_review: None,
             body: OrganizerBodyDisclosure::Unavailable,
             body_scope: OrganizerBodyScope {
                 campaign_id: *Uuid::from_u128(1).as_bytes(),

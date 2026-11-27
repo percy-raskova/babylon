@@ -1,0 +1,31 @@
+{
+  "bench": "country-bench-2026-11-24",
+  "periods_timed": 1,
+  "sets": [
+    {
+      "elapsed_ms": 1232,
+      "ratio_to_baseline_bps": 10000,
+      "set": "baseline"
+    },
+    {
+      "elapsed_ms": 5795,
+      "ratio_to_baseline_bps": 47019,
+      "set": "market"
+    },
+    {
+      "elapsed_ms": 6112,
+      "ratio_to_baseline_bps": 49591,
+      "set": "no-seekers"
+    },
+    {
+      "elapsed_ms": 6750,
+      "ratio_to_baseline_bps": 54765,
+      "set": "all-six"
+    },
+    {
+      "elapsed_ms": 6804,
+      "ratio_to_baseline_bps": 55208,
+      "set": "all-six-with-benefits"
+    }
+  ]
+}

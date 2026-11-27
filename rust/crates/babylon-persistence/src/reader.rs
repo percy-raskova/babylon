@@ -96,6 +96,7 @@ pub(crate) const READER_PRIVILEGE_CENSUS_SQL: &str = "WITH RECURSIVE role_closur
     'v_observer_graph_edge_v1', 'v_observer_graph_hyperedge_v1', \
     'v_observer_graph_hyperedge_member_v1', 'v_observer_graph_edge_f64_v1', \
     'v_observer_graph_node_currency_v1', 'v_observer_graph_hyperedge_f64_v1', \
+    'v_observer_graph_hyperedge_member_f64_v1', \
     'v_observer_world_register_v1', 'v_observer_hex_state_delta_v1', \
     'v_observer_territory_state_v1', 'v_observer_territory_state_field_v1', \
     'v_observer_organization_state_v1', 'v_observer_organization_state_field_v1', \

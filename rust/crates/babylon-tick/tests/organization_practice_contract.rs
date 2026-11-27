@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
 
 use babylon_bsl::exemptions::EXTENSIVE_INTENSIVE_EXEMPTIONS;
@@ -230,6 +230,7 @@ fn action_budget_is_intensive_and_aggregation_law_is_pinned() {
         .expect("action budget declaration");
     assert_eq!(budget.kind, FieldKind::Intensive);
     let env = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: loaded.fields,
         exemptions: EXTENSIVE_INTENSIVE_EXEMPTIONS,
     };

@@ -3,6 +3,7 @@ use super::Physical;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_material_circuit::{CompanyId, OrderId, SiteId};
 use babylon_persistence::economic_catalog::CapturedEconomicCatalog;
+use babylon_persistence::national_economy::GameMachines;
 use babylon_tick::material_replay::PreparedMaterialTick;
 use babylon_tick::material_world::MaterialTickReceipts;
 use serde_json::{json, Value};
@@ -421,11 +422,11 @@ fn contrasting_company_treatments_retain_the_same_portfolio_law_and_geographic_i
                 policy.retailer_buffer_periods < base.retailer_buffer_periods
                     && policy.opening_pantry_periods > base.opening_pantry_periods
             ),
-            Condition::Replacement => assert!(policy
-                .equipment
-                .opening_remaining_service_bps
-                .iter()
-                .all(|n| *n <= 100)),
+            Condition::Replacement => assert!(matches!(
+                &policy.equipment.machines,
+                GameMachines::Batches { opening_remaining_service_bps, .. }
+                    if opening_remaining_service_bps.iter().all(|n| *n <= 100)
+            )),
             Condition::Delay => assert!(
                 policy.equipment.installation_hours_per_unit
                     > base.equipment.installation_hours_per_unit

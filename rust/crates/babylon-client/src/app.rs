@@ -1,6 +1,6 @@
 //! PER-23 Slice 3 app construction (ADR249 R11): [`build_app`] assembles
-//! the Bevy `App` for exactly two modes — the windowed administrative
-//! viewer and the headless dossier CLI. Extracting this from `main` lets
+//! the Bevy `App` for exactly three modes — the windowed administrative
+//! viewer, the headless dossier CLI and the small test economy. Extracting this from `main` lets
 //! both modes share one construction site, keeps `main` a pure dispatch
 //! shim, and gives tests one function to exercise.
 
@@ -42,6 +42,11 @@ pub enum AppMode {
         command: CliCommand,
         /// The canonical campaign identity.
         campaign_id: CampaignId,
+    },
+    /// The small test economy: no campaign, runtime, pipe or database, and nothing saved.
+    SmallWorld {
+        /// A file of commands the scene runs by itself.
+        script: Option<PathBuf>,
     },
 }
 
@@ -125,6 +130,7 @@ pub fn build_app(mode: AppMode) -> Result<App, String> {
                 app.insert_resource(audit);
             }
         }
+        AppMode::SmallWorld { script } => build_small_world(&mut app, script)?,
         AppMode::Headless {
             command,
             campaign_id,
@@ -144,6 +150,40 @@ pub fn build_app(mode: AppMode) -> Result<App, String> {
         }
     }
     Ok(app)
+}
+
+/// The small world is `DefaultPlugins`, the camera coherence and the scene alone.
+fn build_small_world(app: &mut App, script: Option<PathBuf>) -> Result<(), String> {
+    app.add_plugins(
+        DefaultPlugins
+            .set(LogPlugin {
+                filter: format!(
+                    "{},babylon_client=debug,session=debug",
+                    bevy::log::DEFAULT_FILTER
+                ),
+                custom_layer: logging::file_layer,
+                fmt_layer: logging::stderr_fmt_layer,
+                ..default()
+            })
+            // The window's close is left at its default: nothing here handles a quit.
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "Babylon — a test economy".into(),
+                    resolution: (1366, 768).into(),
+                    position: WindowPosition::Centered(MonitorSelection::Primary),
+                    ..default()
+                }),
+                ..default()
+            }),
+    );
+    install_window_camera_coherence(app);
+    log::info!("babylon-client starting (small world)");
+    let scripted = script.is_some();
+    crate::small_world::install_scene(app, script)?;
+    if !scripted {
+        crate::small_world::open_on_first_period(app);
+    }
+    Ok(())
 }
 
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]

@@ -27,6 +27,7 @@ pub mod reader;
 pub mod rule_pipeline;
 pub mod same_tick_order;
 pub mod scenario;
+mod scenario_membership;
 pub use scenario::seed as scenario_seed;
 pub mod scope;
 pub mod score_class;

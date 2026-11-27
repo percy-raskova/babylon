@@ -1,22 +1,25 @@
 //! Finite supplier preferences, recurring household purchases and funded offers.
+use super::dealing::{self, Dealt, Need};
 use super::routes::Network;
-use super::{actors, ActorContext, Builder, NationalOpeningError, Result};
+use super::{actors, templates, ActorContext, Builder, NationalOpeningError, Result};
 use crate::national_economy::grain::FinancialDomainId;
 
-use crate::economic_catalog::{MerchantSeed, ResidentStaffingPoolSeed};
+use crate::economic_catalog::{EconomicHouseholdSeed, MerchantSeed, ResidentStaffingPoolSeed};
 use crate::national_transport::CargoClass;
 
 use babylon_kernel::currency::Currency;
-use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::economic_identity::{EconomicFunction, TradeSet};
 use babylon_kernel::economic_location::EconomicLocation;
 
-use crate::national_economy::GameCommodity;
+use crate::national_economy::{GameCommodity, GameHandling, GameProcurement, NationalGamePolicy};
 use babylon_kernel::content_digest;
 use babylon_material_circuit::HouseholdKind;
 use babylon_material_circuit::{
-    AccountId, CommodityKind, CorridorId, GoodId, HouseholdNeedBasis, HouseholdPurchasePolicy,
-    MerchantRole, PricePolicy, ReplenishmentPolicy, SellerOffer, ServiceConnection,
-    ServiceInputPolicy, SiteId, StaffingPoolBinding, StaffingWorkSource, UnitId,
+    AccountId, CommodityKind, CorridorId, FinalDemandPrincipalId, GoodId, HouseholdNeedBasis,
+    HouseholdPurchasePolicy, MerchantRole, PricePolicy, ReplenishmentPolicy, SellerOffer,
+    ServiceConnection, ServiceInputPolicy, SiteId, StaffingPoolBinding, StaffingWorkSource, UnitId,
+    MAX_HOUSEHOLD_NEEDS, MAX_MATERIAL_CIRCUIT_ROWS, MAX_REPLENISHMENT_POLICIES,
+    MAX_SERVICE_CONNECTIONS,
 };
 use std::collections::BTreeMap;
 
@@ -24,6 +27,8 @@ use std::collections::BTreeMap;
 pub(super) struct Preferences {
     services: BTreeMap<(EconomicLocation, GoodId, UnitId), Option<SiteId>>,
     domestic: BTreeMap<(EconomicLocation, GoodId, UnitId, Option<SiteId>), Option<SiteId>>,
+    /// The needs of stored goods waiting to be dealt their makers (schema 8).
+    pub(super) needs: Vec<Need>,
 }
 
 pub(super) type Providers = BTreeMap<(GoodId, UnitId), ProviderLocations>;
@@ -35,7 +40,7 @@ pub(super) struct ProviderLocations {
 }
 
 impl ProviderLocations {
-    fn new(
+    pub(super) fn new(
         mut sites: BTreeMap<EconomicLocation, Vec<SiteId>>,
         actors: &BTreeMap<SiteId, ActorContext>,
     ) -> Self {
@@ -58,8 +63,25 @@ impl ProviderLocations {
         }
     }
 
+    /// The sites at one location, the largest workplace first.
+    pub(super) fn at(&self, location: EconomicLocation) -> &[SiteId] {
+        self.sites.get(&location).map_or(&[], Vec::as_slice)
+    }
+
+    /// The foreign regions that have a provider, in location order.
+    pub(super) fn regions(&self) -> &[EconomicLocation] {
+        &self.foreign
+    }
+
+    /// Every location that has a provider, with its sites.
+    pub(super) fn locations(&self) -> impl Iterator<Item = (EconomicLocation, &[SiteId])> {
+        self.sites
+            .iter()
+            .map(|(location, sites)| (*location, sites.as_slice()))
+    }
+
     // Workplaces rotate the same finite counterpart roster independently.
-    fn secondary_candidates(
+    pub(super) fn secondary_candidates(
         &self,
         location: EconomicLocation,
         buyer: SiteId,
@@ -84,6 +106,7 @@ impl ProviderLocations {
 }
 
 pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
+    builder.luxury_scales = templates::luxury_scales(builder)?;
     let retailers = local_retailers(builder)?;
     let mut sites_by_good = BTreeMap::<_, BTreeMap<_, Vec<_>>>::new();
     let actors: Vec<_> = builder.actors.values().cloned().collect();
@@ -140,15 +163,22 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
         .collect();
     let mut network = Network::new(builder.transport)?;
     let mut preferences = Preferences::default();
+    let dealt = dealing::deal_services(builder, &providers, &mut network)?;
+    let shops = dealing::deal_shops(builder)?;
     households(
         builder,
         &retailers,
         &providers,
         &mut network,
         &mut preferences,
+        &Dealings {
+            services: &dealt,
+            shops: &shops,
+        },
     )?;
-    producers(builder, &providers, &mut network, &mut preferences)?;
+    producers(builder, &providers, &mut network, &mut preferences, &dealt)?;
     super::equipment::wire(builder, &providers, &mut network, &mut preferences)?;
+    dealing::deal_goods(builder, &providers, &mut network, &mut preferences)?;
     let policies = &mut builder.opening.policies;
     policies
         .offers
@@ -161,9 +191,13 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
         .sort_unstable_by_key(|r| (r.principal_id, r.good_id, r.unit_id));
     policies
         .service_inputs
-        .sort_unstable_by_key(|r| (r.buyer_site_id, r.good_id, r.unit_id));
+        .sort_unstable_by_key(|r| (r.buyer_site_id, r.good_id, r.unit_id, r.provider_site_id));
     policies.service_connections.sort_unstable();
-    Ok(())
+    check_service_bounds(
+        policies.service_inputs.len(),
+        policies.service_connections.len(),
+    )?;
+    check_shop_bounds(policies.offers.len(), policies.replenishment.len())
 }
 
 // Only missing retailer locations need these indices. Actor locations/employment
@@ -208,28 +242,19 @@ fn local_retailers(builder: &mut Builder<'_>) -> Result<BTreeMap<EconomicLocatio
     }
     // Missing commercial distribution becomes a role at an existing accounted
     // workplace, with its existing people, shared attendance and actual cash.
-    let mut resident_totals = BTreeMap::<EconomicLocation, (u64, u64)>::new();
-    for row in &builder.opening.households {
-        let totals = resident_totals.entry(row.location).or_default();
-        totals.0 = totals
-            .0
-            .checked_add(row.persons)
-            .ok_or(NationalOpeningError::Arithmetic)?;
-        totals.1 = totals
-            .1
-            .checked_add(row.households)
-            .ok_or(NationalOpeningError::Arithmetic)?;
+    let mut residents = BTreeMap::<EconomicLocation, Vec<usize>>::new();
+    for (index, row) in builder.opening.households.iter().enumerate() {
+        residents.entry(row.location).or_default().push(index);
     }
-    let missing: Vec<_> = resident_totals
+    let missing: Vec<_> = residents
         .into_iter()
         .filter(|(location, _)| !selected.contains_key(location))
-        .map(|(location, (persons, households))| (location, persons, households))
         .collect();
     if missing.is_empty() {
         return Ok(selected);
     }
     let fallback = RetailFallbackIndices::new(&builder.actors, &builder.opening.staffing);
-    for (location, persons, households) in missing {
+    for (location, accounts) in missing {
         let site = fallback
             .sites
             .get(&location)
@@ -243,7 +268,7 @@ fn local_retailers(builder: &mut Builder<'_>) -> Result<BTreeMap<EconomicLocatio
             labor_unit_id: builder.labor_unit,
             handling: actors::handling_requirements(builder)?,
         };
-        let retail_hours = retail_hours(builder, persons, households)?;
+        let retail_hours = retail_hours(builder, &accounts)?;
         reserve_retail_labor(builder, site, retail_hours)?;
         builder.site_mut(site)?.merchant = Some(merchant);
         let index = *fallback
@@ -313,32 +338,161 @@ fn reserve_retail_labor(builder: &mut Builder<'_>, site: SiteId, retail_hours: u
     Ok(())
 }
 
-fn retail_hours(builder: &Builder<'_>, persons: u64, households: u64) -> Result<u64> {
-    let hours = builder
-        .policy
-        .household_needs
-        .iter()
-        .try_fold(0_u64, |hours, need| {
-            let good = builder.commodity(&need.key)?;
-            if !matches!(good.kind, CommodityKind::Storable { .. }) {
-                return Ok(hours);
+/// The hours a fallback retailer reserves: for each shop good its units of needs and of wants, handled
+/// in hours rounded up to a whole block. `accounts` are the customers' rows of the opening's
+/// households; a want is counted as the engine counts it for each account (its scale, a collective
+/// residence's household-based rows left out), a need on the customers' persons and households.
+fn retail_hours(builder: &Builder<'_>, accounts: &[usize]) -> Result<u64> {
+    let policy = builder.policy;
+    let mut persons = 0_u64;
+    let mut households = 0_u64;
+    for &index in accounts {
+        let row = &builder.opening.households[index];
+        persons = persons
+            .checked_add(row.persons)
+            .ok_or(NationalOpeningError::Arithmetic)?;
+        households = households
+            .checked_add(row.households)
+            .ok_or(NationalOpeningError::Arithmetic)?;
+    }
+    let mut units = BTreeMap::<String, u64>::new();
+    let mut add = |key: &String, quantity: u64| -> Result<()> {
+        if !matches!(builder.commodity(key)?.kind, CommodityKind::Storable { .. }) {
+            return Ok(());
+        }
+        let total = units.entry(key.clone()).or_default();
+        *total = total
+            .checked_add(quantity)
+            .ok_or(NationalOpeningError::Arithmetic)?;
+        Ok(())
+    };
+    for need in &policy.household_needs {
+        let count = match need.basis {
+            HouseholdNeedBasis::Persons => persons,
+            HouseholdNeedBasis::Households => households,
+        };
+        add(&need.key, super::quantity(count, need.units_per_basis)?)?;
+    }
+    for want in &policy.household_wants {
+        for &index in accounts {
+            let row = &builder.opening.households[index];
+            if row.kind == HouseholdKind::CollectiveResidence
+                && want.basis == HouseholdNeedBasis::Households
+            {
+                continue;
             }
-            let units = super::quantity(
-                match need.basis {
-                    HouseholdNeedBasis::Persons => persons,
-                    HouseholdNeedBasis::Households => households,
-                },
-                need.units_per_basis,
-            )?;
-            hours
-                .checked_add(super::quantity(
-                    units,
-                    builder.policy.handling_hours_per_unit,
-                )?)
-                .ok_or(NationalOpeningError::Arithmetic)
-        })?;
+            let count = match want.basis {
+                HouseholdNeedBasis::Persons => row.persons,
+                HouseholdNeedBasis::Households => row.households,
+            };
+            let scale = builder.luxury_scales.get(&row.principal_id).copied();
+            add(&want.key, templates::want_quantity(want, count, scale)?)?;
+        }
+    }
+    units.into_iter().try_fold(0_u64, |hours, (key, total)| {
+        let block = handling(policy, &key)?;
+        let needed = u128::from(total) * u128::from(block.hours);
+        let rounded = u64::try_from(needed.div_ceil(u128::from(block.units)))
+            .map_err(|_| NationalOpeningError::Arithmetic)?;
+        hours
+            .checked_add(rounded)
+            .ok_or(NationalOpeningError::Arithmetic)
+    })
+}
 
-    Ok(hours)
+/// What an account buys of one good in a period: its need and its wants.
+pub(super) struct Purchase {
+    pub(super) key: String,
+    need: u64,
+    want: u64,
+}
+
+/// An account's purchases, needs first in their order and then the goods only wanted; a want of
+/// the households of a collective residence is left out, as a need of theirs is.
+pub(super) fn purchases(
+    builder: &Builder<'_>,
+    household: &EconomicHouseholdSeed,
+) -> Result<Vec<Purchase>> {
+    let scale = builder.luxury_scales.get(&household.principal_id).copied();
+    let collective = household.kind == HouseholdKind::CollectiveResidence;
+    let count = |basis| match basis {
+        HouseholdNeedBasis::Persons => household.persons,
+        HouseholdNeedBasis::Households => household.households,
+    };
+    let mut rows: Vec<Purchase> = Vec::new();
+    let mut add = |key: &str, need: u64, want: u64| -> Result<()> {
+        if let Some(row) = rows.iter_mut().find(|row| row.key == key) {
+            row.need = row
+                .need
+                .checked_add(need)
+                .ok_or(NationalOpeningError::Arithmetic)?;
+            row.want = row
+                .want
+                .checked_add(want)
+                .ok_or(NationalOpeningError::Arithmetic)?;
+        } else {
+            rows.push(Purchase {
+                key: key.to_owned(),
+                need,
+                want,
+            });
+        }
+        Ok(())
+    };
+    for need in &builder.policy.household_needs {
+        if collective && need.basis == HouseholdNeedBasis::Households {
+            continue;
+        }
+        add(
+            &need.key,
+            super::quantity(count(need.basis), need.units_per_basis)?,
+            0,
+        )?;
+    }
+    for want in &builder.policy.household_wants {
+        if collective && want.basis == HouseholdNeedBasis::Households {
+            continue;
+        }
+        add(
+            &want.key,
+            0,
+            templates::want_quantity(want, count(want.basis), scale)?,
+        )?;
+    }
+    Ok(rows)
+}
+
+/// The purchase rows of the opening, needs and wants together, stay within the engine's bound. The
+/// want rows are bounded where they are written (`templates::household_wants`).
+fn check_bounds(purchase_rows: usize) -> Result<()> {
+    if purchase_rows > MAX_HOUSEHOLD_NEEDS {
+        return Err(NationalOpeningError::Bounds);
+    }
+    Ok(())
+}
+
+/// The service tables of the opening, the dealing abroad included, stay within the engine's bounds: past
+/// them the compiler refuses, typed, before the engine would.
+fn check_service_bounds(service_inputs: usize, service_connections: usize) -> Result<()> {
+    if service_inputs > MAX_MATERIAL_CIRCUIT_ROWS || service_connections > MAX_SERVICE_CONNECTIONS {
+        return Err(NationalOpeningError::Bounds);
+    }
+    Ok(())
+}
+
+/// The shop offers and the restocking rows, which the dealing of shops makes grow, stay within the
+/// engine's bounds: past them the compiler refuses, typed, before the engine would.
+fn check_shop_bounds(offers: usize, replenishment: usize) -> Result<()> {
+    if offers > MAX_MATERIAL_CIRCUIT_ROWS || replenishment > MAX_REPLENISHMENT_POLICIES {
+        return Err(NationalOpeningError::Bounds);
+    }
+    Ok(())
+}
+
+/// What the dealing has settled before the households' rows are written.
+struct Dealings<'a> {
+    services: &'a Dealt,
+    shops: &'a BTreeMap<FinalDemandPrincipalId, SiteId>,
 }
 
 fn households(
@@ -347,7 +501,12 @@ fn households(
     providers: &Providers,
     network: &mut Network<'_>,
     preferences: &mut Preferences,
+    dealings: &Dealings<'_>,
 ) -> Result<()> {
+    let Dealings {
+        services: dealt,
+        shops,
+    } = *dealings;
     let households = builder.opening.households.clone();
     let domain_retailers = representative_retailers(builder)?;
     let mut retail_requirements = BTreeMap::<(SiteId, String), u64>::new();
@@ -356,36 +515,37 @@ fn households(
             AccountId::Household(household.principal_id),
             household.location,
         )?;
-        let retailer = *domain_retailers
-            .get(&domain)
+        let retailer = *shops
+            .get(&household.principal_id)
+            .or_else(|| domain_retailers.get(&domain))
             .or_else(|| retailers.get(&household.location))
             .ok_or(NationalOpeningError::Identity)?;
-        for need in builder.policy.household_needs.clone() {
-            if household.kind == HouseholdKind::CollectiveResidence
-                && need.basis == HouseholdNeedBasis::Households
-            {
-                continue;
-            }
-            let good = builder.commodity(&need.key)?.clone();
-            let required = super::quantity(
-                match need.basis {
-                    HouseholdNeedBasis::Persons => household.persons,
-                    HouseholdNeedBasis::Households => household.households,
-                },
-                need.units_per_basis,
-            )?;
+        for row in purchases(builder, &household)? {
+            let good = builder.commodity(&row.key)?.clone();
+            let required = row
+                .need
+                .checked_add(row.want)
+                .ok_or(NationalOpeningError::Arithmetic)?;
             let seller = match good.kind {
                 CommodityKind::Storable { .. } => retailer,
-                CommodityKind::PeriodService { .. } => service_provider(
-                    providers,
-                    network,
-                    preferences,
-                    household.location,
-                    good.good_id,
-                    good.unit_id,
-                )?
-                .ok_or(NationalOpeningError::MissingObservation)?,
+                CommodityKind::PeriodService { .. } => {
+                    let account = AccountId::Household(household.principal_id);
+                    let found = if dealing::applies(builder.policy, household.location) {
+                        dealt.get(&(good.good_id, good.unit_id, account)).copied()
+                    } else {
+                        service_provider(
+                            providers,
+                            network,
+                            preferences,
+                            household.location,
+                            good.good_id,
+                            good.unit_id,
+                        )?
+                    };
+                    found.ok_or(NationalOpeningError::MissingObservation)?
+                }
             };
+            // A want is used where it is bought: it has no pantry, so no stock to hold.
             builder
                 .opening
                 .policies
@@ -395,7 +555,7 @@ fn households(
                     retailer_site_id: seller,
                     good_id: good.good_id,
                     unit_id: good.unit_id,
-                    target_closing_stock: if good.cargo.is_some() { required } else { 0 },
+                    target_closing_stock: if good.cargo.is_some() { row.need } else { 0 },
                     maximum_purchase: super::quantity(
                         required,
                         builder.policy.retailer_buffer_periods,
@@ -415,12 +575,13 @@ fn households(
                     });
                 continue;
             }
-            let total = retail_requirements.entry((retailer, need.key)).or_default();
+            let total = retail_requirements.entry((retailer, row.key)).or_default();
             *total = total
                 .checked_add(required)
                 .ok_or(NationalOpeningError::Arithmetic)?;
         }
     }
+    check_bounds(builder.opening.policies.household_purchases.len())?;
     // Supply and fractional sourcing are calculated once from the location total.
     for ((retailer, key), required) in retail_requirements {
         retail_stock(builder, retailer, &key, required)?;
@@ -454,7 +615,7 @@ fn retail_stock(
         .ok_or(NationalOpeningError::Policy)?
         .scaled(actor.price_scale_bps)
         .map_err(|_| NationalOpeningError::Arithmetic)?;
-    let handling_charge = super::amount(builder.policy.handling_hours_per_unit, actor.wage)?;
+    let handling_charge = handling_charge(handling(builder.policy, key)?, actor.wage)?;
     let unit_price = super::sum_amount(price.opening, handling_charge)?;
     let minimum = super::sum_amount(price.minimum, handling_charge)?;
     let maximum = super::sum_amount(price.maximum, handling_charge)?;
@@ -497,12 +658,31 @@ fn retail_stock(
     Ok(())
 }
 
+/// The units a site needs of the input `key` for its planned batches, at its force.
+pub(super) fn required_input(
+    builder: &Builder<'_>,
+    actor: &ActorContext,
+    key: &str,
+) -> Result<u64> {
+    let recipe = builder
+        .policy
+        .recipes
+        .get(&actor.function)
+        .ok_or(NationalOpeningError::Policy)?;
+    let coefficient = *recipe.inputs.get(key).ok_or(NationalOpeningError::Policy)?;
+    let batches = super::quantity(actor.force, builder.policy.work_hours_per_person)?
+        / recipe.labor_hours_per_batch;
+    super::quantity(batches, coefficient)
+}
+
 fn producers(
     builder: &mut Builder<'_>,
     providers: &Providers,
     network: &mut Network<'_>,
     preferences: &mut Preferences,
+    dealt: &Dealt,
 ) -> Result<()> {
+    let exported = dealing::exports(builder, providers, network, preferences)?;
     let actors: Vec<_> = builder.actors.values().cloned().collect();
     for actor in actors {
         if actor.process_id.is_none() {
@@ -514,14 +694,12 @@ fn producers(
             .get(&actor.function)
             .ok_or(NationalOpeningError::Policy)?
             .clone();
-        let maximum_batches = super::quantity(actor.force, builder.policy.work_hours_per_person)?
-            / recipe.labor_hours_per_batch;
-        for (key, coefficient) in recipe.inputs {
-            let good = builder.commodity(&key)?.clone();
+        for key in recipe.inputs.keys() {
+            let good = builder.commodity(key)?.clone();
             if good.price.is_none() {
                 continue;
             } // finite deposit is not bought or reproduced
-            let required = super::quantity(maximum_batches, coefficient)?;
+            let required = required_input(builder, &actor, key)?;
             if required == 0 {
                 continue;
             }
@@ -533,49 +711,35 @@ fn producers(
                     preferences,
                     ProcurementNeed {
                         buyer: actor.site_id,
-                        key: &key,
+                        key,
                         required,
                         buffer_periods: builder.policy.opening_input_periods,
                     },
                 )?,
                 CommodityKind::PeriodService { .. } => {
-                    let Some(provider) = service_provider(
-                        providers,
-                        network,
-                        preferences,
-                        actor.location,
-                        good.good_id,
-                        good.unit_id,
-                    )?
-                    else {
-                        continue;
+                    let home = if dealing::applies(builder.policy, actor.location) {
+                        dealt
+                            .get(&(good.good_id, good.unit_id, AccountId::Site(actor.site_id)))
+                            .copied()
+                    } else {
+                        service_provider(
+                            providers,
+                            network,
+                            preferences,
+                            actor.location,
+                            good.good_id,
+                            good.unit_id,
+                        )?
                     };
-                    if provider == actor.site_id {
-                        return Err(NationalOpeningError::Policy);
+                    let rows = dealing::service_rows(
+                        builder, providers, &exported, &actor, key, home, required,
+                    )?;
+                    for (provider, cap) in rows {
+                        if provider == actor.site_id {
+                            return Err(NationalOpeningError::Policy);
+                        }
+                        push_service_input(builder, &actor, &good, provider, cap)?;
                     }
-                    builder
-                        .opening
-                        .policies
-                        .service_inputs
-                        .push(ServiceInputPolicy {
-                            buyer_site_id: actor.site_id,
-                            provider_site_id: provider,
-                            good_id: good.good_id,
-                            unit_id: good.unit_id,
-                            quantity_per_period: required,
-                            maximum_purchase: required,
-                            cash_floor: payroll(builder, actor.site_id)?,
-                        });
-                    builder
-                        .opening
-                        .policies
-                        .service_connections
-                        .push(ServiceConnection {
-                            provider_site_id: provider,
-                            buyer: AccountId::Site(actor.site_id),
-                            good_id: good.good_id,
-                            unit_id: good.unit_id,
-                        });
                 }
             }
         }
@@ -583,7 +747,35 @@ fn producers(
     Ok(())
 }
 
-fn service_provider(
+/// One row of a service input and its connection: `cap` units of the service a period from `provider`.
+fn push_service_input(
+    builder: &mut Builder<'_>,
+    actor: &ActorContext,
+    good: &GameCommodity,
+    provider: SiteId,
+    cap: u64,
+) -> Result<()> {
+    let cash_floor = payroll(builder, actor.site_id)?;
+    let policies = &mut builder.opening.policies;
+    policies.service_inputs.push(ServiceInputPolicy {
+        buyer_site_id: actor.site_id,
+        provider_site_id: provider,
+        good_id: good.good_id,
+        unit_id: good.unit_id,
+        quantity_per_period: cap,
+        maximum_purchase: cap,
+        cash_floor,
+    });
+    policies.service_connections.push(ServiceConnection {
+        provider_site_id: provider,
+        buyer: AccountId::Site(actor.site_id),
+        good_id: good.good_id,
+        unit_id: good.unit_id,
+    });
+    Ok(())
+}
+
+pub(super) fn service_provider(
     providers: &Providers,
     network: &mut Network<'_>,
     preferences: &mut Preferences,
@@ -702,6 +894,79 @@ pub(super) fn secondary_supplier(
     Ok(secondary)
 }
 
+/// The retail handling of a shop good: schema 7's one figure for every good, in blocks of one unit, or
+/// schema 8's row of the good.
+pub(super) fn handling(policy: &NationalGamePolicy, key: &str) -> Result<GameHandling> {
+    if let Some(hours) = policy.handling_hours_per_unit {
+        return Ok(GameHandling { hours, units: 1 });
+    }
+    policy
+        .commodities
+        .get(key)
+        .and_then(|good| good.handling)
+        .ok_or(NationalOpeningError::Policy)
+}
+
+/// The retail charge of a unit, in micros: `ceil(hours x wage / units)`, the engine's cost of a unit.
+pub(super) fn handling_charge(handling: GameHandling, wage: Currency) -> Result<Currency> {
+    let hours = i128::from(handling.hours)
+        .checked_mul(wage.micro_units())
+        .ok_or(NationalOpeningError::Arithmetic)?;
+    let units = i128::from(handling.units);
+    if units == 0 {
+        return Err(NationalOpeningError::Policy);
+    }
+    let whole = hours.div_euclid(units);
+    let charge = if hours.rem_euclid(units) == 0 {
+        whole
+    } else {
+        whole + 1
+    };
+    Ok(Currency::from_micro_units(charge))
+}
+
+/// The share of `key` a buyer at `location` takes abroad: a domestic buyer's import share, a foreign or
+/// dependency buyer's export share of its region (from the United States). `key` is a priced storable good or a
+/// crossing service (K1, `policy.crossing_services`). Schema 7: the single cap, for a storable good only.
+///
+/// # Errors
+/// `Policy` for a key in no table (a service that does not cross; under schema 7, any service).
+pub(super) fn foreign_share_bps(
+    policy: &NationalGamePolicy,
+    location: EconomicLocation,
+    key: &str,
+) -> Result<u16> {
+    match &policy.markets.procurement {
+        GameProcurement::Single(bps) => policy
+            .commodities
+            .get(key)
+            .and_then(|good| good.cargo)
+            .map(|_| *bps)
+            .ok_or(NationalOpeningError::Policy),
+        GameProcurement::ByProduct { import_bps } => {
+            let export = match location {
+                EconomicLocation::County(_) => None,
+                EconomicLocation::Foreign(counterpart) => Some(
+                    &policy
+                        .counterparts
+                        .get(&counterpart)
+                        .ok_or(NationalOpeningError::Policy)?
+                        .export_bps,
+                ),
+                EconomicLocation::Dependency(_) => Some(&policy.dependency.profile.export_bps),
+            };
+            let table = match export {
+                None => Some(import_bps),
+                Some(rows) => rows.as_ref(),
+            };
+            table
+                .and_then(|rows| rows.get(key))
+                .copied()
+                .ok_or(NationalOpeningError::Policy)
+        }
+    }
+}
+
 pub(super) fn procure(
     builder: &mut Builder<'_>,
     providers: &Providers,
@@ -720,6 +985,15 @@ pub(super) fn procure(
         .get(&buyer)
         .ok_or(NationalOpeningError::Identity)?;
     let location = actor.location;
+    if builder.policy.trades == TradeSet::Twelve {
+        preferences.needs.push(Need {
+            buyer,
+            key: key.to_owned(),
+            required,
+            buffer_periods,
+        });
+        return Ok(());
+    }
     let good = builder.commodity(key)?.clone();
     let cargo = good.cargo.ok_or(NationalOpeningError::Policy)?;
     let Some(locations) = providers.get(&(good.good_id, good.unit_id)) else {
@@ -729,7 +1003,7 @@ pub(super) fn procure(
     let secondary = secondary_supplier(builder, locations, network, buyer, cargo)?;
     let foreign_cap = if secondary.is_some() {
         u64::try_from(
-            u128::from(required) * u128::from(builder.policy.markets.foreign_procurement_bps)
+            u128::from(required) * u128::from(foreign_share_bps(builder.policy, location, key)?)
                 / 10_000,
         )
         .map_err(|_| NationalOpeningError::Arithmetic)?
@@ -916,5 +1190,163 @@ mod retailer_index_controls {
         }
         let empty = RetailFallbackIndices::new(&BTreeMap::new(), &[]);
         assert!(empty.sites.is_empty() && empty.staffing.is_empty());
+    }
+
+    #[test]
+    fn a_handling_block_sets_the_retail_charge() {
+        let charge = |hours, units, wage: i128| {
+            handling_charge(
+                GameHandling { hours, units },
+                Currency::from_micro_units(wage),
+            )
+            .map(Currency::micro_units)
+        };
+        // Three hours for forty units at $30: 90,000,000 / 40 = 2,250,000 micros.
+        assert_eq!(charge(3, 40, 30_000_000), Ok(2_250_000));
+        // Rounded up to a whole micro; a block of one unit is the hours times the wage.
+        assert_eq!(charge(1, 3, 10), Ok(4));
+        assert_eq!(charge(2, 1, 30_000_000), Ok(60_000_000));
+    }
+
+    #[test]
+    fn too_many_purchase_rows_are_refused() {
+        assert_eq!(check_bounds(MAX_HOUSEHOLD_NEEDS), Ok(()));
+        assert_eq!(
+            check_bounds(MAX_HOUSEHOLD_NEEDS + 1),
+            Err(NationalOpeningError::Bounds)
+        );
+        assert_eq!(
+            check_service_bounds(MAX_MATERIAL_CIRCUIT_ROWS, MAX_SERVICE_CONNECTIONS),
+            Ok(())
+        );
+        assert_eq!(
+            check_service_bounds(MAX_MATERIAL_CIRCUIT_ROWS + 1, 0),
+            Err(NationalOpeningError::Bounds)
+        );
+        assert_eq!(
+            check_service_bounds(0, MAX_SERVICE_CONNECTIONS + 1),
+            Err(NationalOpeningError::Bounds)
+        );
+        assert_eq!(
+            check_shop_bounds(MAX_MATERIAL_CIRCUIT_ROWS, MAX_REPLENISHMENT_POLICIES),
+            Ok(())
+        );
+        assert_eq!(
+            check_shop_bounds(MAX_MATERIAL_CIRCUIT_ROWS + 1, 0),
+            Err(NationalOpeningError::Bounds)
+        );
+        assert_eq!(
+            check_shop_bounds(0, MAX_REPLENISHMENT_POLICIES + 1),
+            Err(NationalOpeningError::Bounds)
+        );
+    }
+
+    #[test]
+    fn a_fallback_shop_reserves_hours_for_scaled_luxuries() {
+        use crate::economic_catalog::HouseholdTemplateId;
+        use crate::national_economy::GameWant;
+        use babylon_material_circuit::{FinalDemandPrincipalId, WantTier};
+        let mut policy = NationalGamePolicy::parse(include_str!(
+            "../../../tests/fixtures/national_twelve_trades.defines.toml"
+        ))
+        .expect("the fixture admits");
+        policy.household_needs.clear();
+        policy.handling_hours_per_unit = Some(1);
+        policy.household_wants = vec![GameWant {
+            key: "consumer_goods".to_owned(),
+            tier: WantTier::Luxury,
+            basis: HouseholdNeedBasis::Persons,
+            units_per_basis: 2,
+        }];
+        let transport =
+            crate::national_transport::national_transport_reference().expect("transport");
+        let mut builder = Builder::new(&policy, None, transport, None).expect("builder");
+        let location = EconomicLocation::domestic_county(
+            babylon_kernel::geography::CountyGeoid::try_from("26163").expect("county"),
+        )
+        .expect("a domestic location");
+        let mut seats = Vec::new();
+        for (index, persons) in [(1_u8, 8_u64), (2, 10)] {
+            let principal = FinalDemandPrincipalId::from_bytes([index; 32]);
+            seats.push(principal);
+            builder.opening.households.push(EconomicHouseholdSeed {
+                kind: HouseholdKind::Ordinary,
+                principal_id: principal,
+                subject: actors::subject(location, &format!("test-{index}")),
+                location,
+                persons,
+                households: persons,
+                template: HouseholdTemplateId(1),
+                opening_stock: Vec::new(),
+                opening_cash: Currency::from_micro_units(0),
+            });
+        }
+        assert_eq!(retail_hours(&builder, &[0, 1]), Ok(2 * 8 + 2 * 10));
+        builder.luxury_scales.insert(seats[1], 12_500);
+        // Ten persons at 2 a person, at 12,500: floor(20 x 5 / 4) = 25.
+        assert_eq!(retail_hours(&builder, &[0, 1]), Ok(2 * 8 + 25));
+    }
+}
+
+#[cfg(test)]
+mod foreign_share_controls {
+    use super::*;
+    use babylon_kernel::economic_location::ForeignCounterpart;
+    use babylon_kernel::geography::CountyGeoid;
+
+    const FIXTURE: &str =
+        include_str!("../../../tests/fixtures/national_twelve_trades.defines.toml");
+    const SHIPPED: &str = include_str!("../../../../../../content/scenarios/national/defines.toml");
+
+    fn wayne() -> EconomicLocation {
+        EconomicLocation::domestic_county(
+            CountyGeoid::try_from("26163").expect("the fixture value fits the target range"),
+        )
+        .expect("a domestic county")
+    }
+
+    fn crossing_text() -> String {
+        FIXTURE
+            .replacen(
+                "place_services = [",
+                "crossing_services = [\"business_services\"]\nplace_services = [",
+                1,
+            )
+            .replacen(
+                "equipment = 0 }",
+                "equipment = 0, business_services = 1500 }",
+                1,
+            )
+            .replace(
+                "equipment = 2500 }",
+                "equipment = 2500, business_services = 1000 }",
+            )
+    }
+
+    #[test]
+    fn a_crossing_service_has_a_share() {
+        let canada = EconomicLocation::Foreign(ForeignCounterpart::Canada);
+        let policy = NationalGamePolicy::parse(&crossing_text()).expect("the text admits");
+        assert_eq!(
+            foreign_share_bps(&policy, wayne(), "business_services"),
+            Ok(1_500)
+        );
+        assert_eq!(
+            foreign_share_bps(&policy, canada, "business_services"),
+            Ok(1_000)
+        );
+        assert_eq!(foreign_share_bps(&policy, wayne(), "food"), Ok(2_500));
+        let fixture = NationalGamePolicy::parse(FIXTURE).expect("the fixture admits");
+        assert_eq!(
+            foreign_share_bps(&fixture, wayne(), "business_services"),
+            Err(NationalOpeningError::Policy)
+        );
+        let shipped = NationalGamePolicy::parse(SHIPPED).expect("the shipped text admits");
+        assert_eq!(
+            foreign_share_bps(&shipped, wayne(), "business_services"),
+            Err(NationalOpeningError::Policy)
+        );
+        assert_eq!(foreign_share_bps(&shipped, wayne(), "food"), Ok(2_500));
+        assert_eq!(foreign_share_bps(&shipped, canada, "food"), Ok(2_500));
     }
 }

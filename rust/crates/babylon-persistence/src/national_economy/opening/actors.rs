@@ -6,7 +6,7 @@ use crate::economic_catalog::{
 };
 use crate::national_counties::NationalCountyReference;
 use crate::national_economy::grain::OpeningHouseholdAllocation;
-use crate::national_economy::ResidentWorkplaceSource;
+use crate::national_economy::{GameWages, ResidentWorkplaceSource};
 use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::national_resident_allocation::{ResidentAttendanceMode, ResidentWorkplaceAllocation};
 
@@ -24,7 +24,7 @@ use babylon_kernel::content_digest;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::{
     CommodityKind, CorridorId, EmploymentTerms, HouseholdKind, HouseholdNeedBasis,
-    LaborCompensation, LogisticsNodeId, MerchantRole, ProcessId, StaffingPolicy,
+    LaborCompensation, LogisticsNodeId, MerchantRole, ProcessId, SiteId, StaffingPolicy,
     StaffingWorkSource,
 };
 use std::collections::BTreeMap;
@@ -106,13 +106,13 @@ pub(super) fn domestic(
             employed,
             employee_persons,
             force,
-            wage: builder.policy.default_wage,
+            wage: site_wage(builder, target.site_id)?,
             price_scale_bps: 10_000,
             planned_batches: 0,
             process_id: None,
         };
         site(builder, context, target.workplace.clone(), source, label)?;
-        employment(builder, row);
+        employment(builder, row)?;
     }
     builder.opening.staffing = allocation
         .staffing_seeds(|target| {
@@ -137,12 +137,28 @@ pub(super) fn domestic(
     Ok(())
 }
 
-fn employment(builder: &mut Builder<'_>, row: &AssignedResidentWorkplace) {
+/// The wage a domestic site pays: the scenario's one wage (schema 7 and earlier), or the observed
+/// wage of its trade and place.
+fn site_wage(builder: &Builder<'_>, site: SiteId) -> Result<Currency> {
+    match builder.policy.wages {
+        GameWages::Single(wage) => Ok(wage),
+        GameWages::Observed => builder
+            .workplace_wages
+            .get(&site)
+            .copied()
+            .ok_or(NationalOpeningError::Policy),
+    }
+}
+
+fn employment(builder: &mut Builder<'_>, row: &AssignedResidentWorkplace) -> Result<()> {
+    let wage = builder
+        .actors
+        .get(&row.target.site_id)
+        .ok_or(NationalOpeningError::Identity)?
+        .wage;
     for member in &row.members {
         let compensation = match member.mode {
-            ResidentAttendanceMode::Employee => {
-                LaborCompensation::Wage(builder.policy.default_wage)
-            }
+            ResidentAttendanceMode::Employee => LaborCompensation::Wage(wage),
             ResidentAttendanceMode::WorkingOwner => LaborCompensation::WorkingOwner,
             ResidentAttendanceMode::UnpaidFamily => LaborCompensation::UnpaidFamily,
         };
@@ -154,6 +170,7 @@ fn employment(builder: &mut Builder<'_>, row: &AssignedResidentWorkplace) {
             compensation,
         });
     }
+    Ok(())
 }
 
 pub(super) fn sources(actor: &ActorContext) -> Vec<StaffingWorkSource> {
@@ -424,7 +441,7 @@ fn process(
     let stored_output = matches!(output.kind, CommodityKind::Storable { .. });
     let installation = ProcessInstallation {
         process_id,
-        recipe: templates::recipe_id(context.function)?,
+        recipe: templates::recipe_id(builder.policy.trades, context.function)?,
         planned_batches: context.planned_batches,
         output_buffer: if stored_output { output_units } else { 0 },
     };
@@ -514,21 +531,18 @@ pub(super) fn node_id(source: &str) -> LogisticsNodeId {
     LogisticsNodeId::from_bytes(content_digest::sha256_of(&bytes))
 }
 
+/// One handling row for each shop good: every storable good a need or a want names.
 pub(super) fn handling_requirements(builder: &Builder<'_>) -> Result<Vec<HandlingRequirement>> {
-    builder
-        .policy
-        .household_needs
-        .iter()
-        .filter_map(|need| match builder.commodity(&need.key) {
-            Ok(good) if matches!(good.kind, CommodityKind::Storable { .. }) => {
-                Some(Ok(HandlingRequirement {
-                    good_id: good.good_id,
-                    unit_id: good.unit_id,
-                    hours_per_unit: builder.policy.handling_hours_per_unit,
-                }))
-            }
-            Ok(_) => None,
-            Err(error) => Some(Err(error)),
+    super::templates::shop_goods(builder.policy)?
+        .into_iter()
+        .map(|(key, handling)| {
+            let good = builder.commodity(&key)?;
+            Ok(HandlingRequirement {
+                good_id: good.good_id,
+                unit_id: good.unit_id,
+                hours_per_unit: handling.hours,
+                units: handling.units,
+            })
         })
         .collect()
 }

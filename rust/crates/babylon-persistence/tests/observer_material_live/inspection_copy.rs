@@ -42,6 +42,7 @@ fn predecessor_inspection_copies_only_the_named_campaign_without_adopting_its_da
     let mut source = from.writer.connect(NoTls).expect("disposable source");
     let raw = markers(&mut source, campaign);
     assert_eq!(raw.len(), 2);
+    check_predecessor_membership_values(&from, &mut source, campaign, &raw);
     check_predecessor_labor_indexes(&from, &mut source, campaign, &raw);
     source
         .batch_execute(include_str!("predecessor_2824cf38e.sql"))
@@ -82,7 +83,38 @@ fn predecessor_inspection_copies_only_the_named_campaign_without_adopting_its_da
     );
 }
 
-/// The preceding layout differs only in the physical indexes over derived labor rows.
+/// The layout before membership values lacks the value table and its observer view.
+fn check_predecessor_membership_values(
+    source_db: &DisposableTarget,
+    source: &mut Client,
+    campaign: CampaignId,
+    expected: &[Vec<u8>],
+) {
+    let marker = "928796a327c81ef7b0bb716a2afddfd8cb761b1a4adf69e8edff3dbf11aa3f7b";
+    source
+        .batch_execute(
+            "DROP VIEW public.v_observer_graph_hyperedge_member_f64_v1;
+            DROP TABLE babylon_state.graph_hyperedge_member_f64_v1",
+        )
+        .expect("restore the layout before membership values in the private source");
+    source
+        .execute(
+            "UPDATE babylon_meta.current_schema SET schema_sha256=decode($1,'hex')",
+            &[&marker],
+        )
+        .expect("restore the marker before membership values");
+    let target = DisposableTarget::create();
+    let report = inspection_copy::copy_campaign(&source_db.writer, &target.writer, campaign)
+        .expect("copy original committed rows from the layout before membership values");
+    assert_eq!(report.source_schema, marker);
+    assert_eq!(report.committed_periods, 2);
+    let mut copied = target.writer.connect(NoTls).expect("copied campaign");
+    assert_eq!(markers(&mut copied, campaign), expected);
+    assert_eq!(markers(source, campaign), expected);
+}
+
+/// The layout before this one differs only in the physical indexes over derived labor rows; the
+/// source reaches it from the layout before membership values, which the step above restored.
 fn check_predecessor_labor_indexes(
     source_db: &DisposableTarget,
     source: &mut Client,

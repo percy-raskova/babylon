@@ -536,7 +536,7 @@ fn paid_terms() -> (CityPdConfig, PublicVenuePolicy) {
     let agency = agency_account();
     let principal = funding_control::recipient();
     let config = CityPdConfig {
-        schema_version: 1,
+        schema_version: 2,
         campaign_id: [1; 16],
         actor_id: 900,
         authority_id: [2; 16],
@@ -551,6 +551,11 @@ fn paid_terms() -> (CityPdConfig, PublicVenuePolicy) {
         visit_cost_micros: 100_000,
         appropriation_micros: 200_000,
         appropriation_priority: 0,
+        payroll_site_account_id: [10; 32],
+        payroll_positions: 2,
+        payroll_hours_per_position: 4,
+        payroll_micros: 800_000,
+        visits_per_period: 2,
         content_digest: [8; 32],
         policy_source_digest: [9; 32],
     };
@@ -593,7 +598,7 @@ fn authored_case_and_intent(
         .expect("public venue fixture supplies valid evidence");
     let mut intent = CityPdIntent {
         intent_id: [0; 32],
-        schema_version: 1,
+        schema_version: 2,
         campaign_id: config.campaign_id,
         actor_id: config.actor_id,
         authority_id: config.authority_id,

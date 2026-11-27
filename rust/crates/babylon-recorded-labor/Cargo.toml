@@ -1,0 +1,16 @@
+[package]
+name = "babylon-recorded-labor"
+description = "The recorded-labor ledger's fold: hours carried through one period of the material circuit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+babylon-kernel = { path = "../babylon-kernel" }
+babylon-material-circuit = { path = "../babylon-material-circuit" }
+serde = { version = "1", features = ["derive"] }

@@ -1,0 +1,123 @@
+ADR316_attributed_membership_is_served:
+  title: A node's membership of a hyperedge carries declared, typed values, and BSL reads and writes them
+  date: '2026-11-22'
+  status: accepted
+  issue: PER-371
+  evidence_class: Implemented
+  authority:
+    - >-
+        Amendment AG clause (i) (ADR189, ratified 2026-08-10): the (member,
+        hyperedge) pair is a first-class attributed membership with declared,
+        typed payload fields. Clause (iv) obliges the language reference to
+        spec it, which docs/reference/bsl-language.rst sections 2.8, 2.9,
+        2.10, 2.12 and 3.9 clause 6 did, in rows D79 to D84.
+    - >-
+        ADR198 R4: AG (i)'s payload is a storage step of its own, a
+        save-compatibility step. The Director's ruling in GitHub issue #653
+        chartered it.
+    - >-
+        ADR315 rule H1: the nation is a hyperedge over household groups, and
+        a nation's values on a group are its second consumer. The plan's
+        test fixture is the nation case.
+  context: |
+    The language reference ruled the kind in the summer and the engine refused
+    every form of it, citing #653. The hypergraph library had no per-membership
+    slot a caller could write. The housing design needs one value per (nation,
+    group) pair: the same group in two nations carries two values.
+  decision: |
+    THE VALUE. It lives in the library's membership slot, a sorted map from
+    qname to f64. One field has one type, one kind and one owner pair
+    (HyperedgeType, NodeType), declared by a deffield with :member. There is no
+    default: a membership is written whole at its mint or its hydration. A
+    member that leaves and returns starts from nothing.
+
+    THE HASH. The state hash gains section 0x08 (layout version 5), rows of
+    (hyperedge id, member id, qname, f64) sorted by that key. The stable graph
+    gains section 0x09 for the same rows by local names. Both are written only
+    when they have rows. So the stable graph's layout version stays 1: every
+    other section there is always written, and a bump would have moved every
+    checkpoint digest and the world identity of worlds with no membership
+    field. A world with no membership field keeps every byte, hash, vector and
+    save; a pinned test, a_world_without_the_field_hashes_as_before, holds it.
+
+    THE STORE. The stored schema gains the table
+    graph_hyperedge_member_f64_v1, keyed by (campaign, tick, hyperedge, member,
+    qname) and bound by a foreign key to its membership, with an observer view.
+    The committed-tick rows gain tag 8. A database made before the table is
+    refused by require_current_schema and made again: this is the
+    save-compatibility step R4 names, and no migration is written. Local play
+    databases are included.
+
+    THE LANGUAGE. deffield takes :member NodeType/X. membership-field-of reads
+    (E-EVAL-038 for a pair that is not a membership, E-EVAL-033 for a wrong
+    type). update-membership writes the four update operations, range-checked
+    (E-EVAL-020). The scenario seeds through the annotated member item. The
+    wrong form for a qname is E-LOAD-046, a :member on a node or edge owner is
+    E-LOAD-048.
+
+    FOUR POINTS DECIDED HERE. The Director accepted all four on 2026-11-22, in
+    the question dialog ("Accept all four"). They are register row D229 in the
+    language reference.
+    1. The scenario's form for seeding a membership's values:
+       (member <NodeType/X> <name> (<qname> <value>)*).
+    2. A hydrated member not of the annotated type is E-EVAL-033, the verb's
+       code.
+    3. The stable graph's new section is written only when it has rows, under
+       the unchanged layout version 1.
+    4. A write to a membership is a recorded motion, with its own record
+       (Write::MembershipAttribute) and effect signature
+       (EffectSignature::MembershipField).
+  consequences:
+    - >-
+        Four pinned digests of the source file sfs_profile.rs moved, because
+        the plan told the verb's task to edit that file. No state hash, vector
+        or baseline moved.
+    - >-
+        The stored schema's digest, the four census fixtures, the persistence
+        vector corpus (54 to 55 rows) and the lists of stored relations moved,
+        and only these, in the storing commit.
+    - >-
+        In the scenario dialect, the owner and registration checks of a :member
+        declaration run only when a defvocabulary precedes it, as for every
+        vocabulary check of that loader.
+    - >-
+        A qname declared nowhere, written in an annotated member item, is
+        refused without a code.
+    - >-
+        A non-reference operand is E-EVAL-033 from membership-field-of and a
+        refusal without a code from update-membership, as from
+        update-hyperedge.
+    - >-
+        The kernel agreement (E-LOAD-022) does not compare the member half yet.
+    - >-
+        The live test a_campaign_with_membership_values_restores_them commits a
+        period of a campaign whose content declares a membership field,
+        reopens it and compares stable bytes, world hash, tail and stored
+        rows; a lost value row refuses the reopen. No shipped content declares
+        a membership field yet.
+  alternatives_rejected:
+    - >-
+        A per-(member, hyperedge) dyadic edge. Amendment AG rejects it in its
+        own words: it re-exposes the incidence encoding.
+    - 'A fourth reference kind, MembershipRef, or a memberships-of query (D80).'
+    - >-
+        Bumping the stable graph's layout version. It moves every checkpoint
+        digest for worlds that carry no membership field.
+    - 'A migration for databases made before the table. AGENTS.md allows refusing them.'
+  open_questions:
+    - 'The shape verbs inside rules: the mint-time (member ...) item of add-hyperedge stays refused with them.'
+    - 'The Allegiance and Electoral systems, which read payload.'
+    - 'The nation hyperedges and their census table, and a rule that reads a nation.'
+    - 'The kernel agreement does not compare the member half.'
+    - 'A test over shipped content waits for the first content that declares a membership field.'
+  verification: |
+    Family 23 of the language reference's section 6.2 in
+    rust/crates/babylon-bsl/tests/r9_chapters.rs, with the nation case; the
+    field-free pin; the differential and conformance suites of babylon-graph
+    over both stores; the persistence round trip and the live
+    runtime_open focus.
+  related:
+    - ADR315_homes_rent_and_nation
+    - ADR198_program29_substrate_widening_charter
+    - ADR193_hypergraph_storage_swap
+    - ADR189_amendment_ag_attributed_membership_lattice_instances

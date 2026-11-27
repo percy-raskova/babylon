@@ -15,11 +15,14 @@ use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::national_household_refinement::NationalDetailPartition;
 use crate::national_households::NationalHouseholdReference;
 use crate::national_resident_workforce::NationalResidentWorkforceReference;
+use crate::national_trade_pay::NationalTradePayReference;
 use crate::national_transport::NationalTransportReference;
 use crate::world_reference::WorldReference;
 use babylon_bsl::scenario_seed::GraphSeed;
 use babylon_graph::hypergraph_store::HypergraphStore;
-use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_identity::TradeSet;
+use babylon_material_circuit::{FinalDemandPrincipalId, SiteId};
 use std::collections::BTreeMap;
 use std::result::Result as StdResult;
 
@@ -32,10 +35,14 @@ pub(super) struct NationalSources {
     pub(super) aid: NationalAidCapture,
     pub(super) support_claimant: Option<NationalSupportClaimant>,
     pub(super) household_keys: BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
+    /// The observed wage of each domestic site (schema 8; empty before).
+    pub(super) workplace_wages: BTreeMap<SiteId, Currency>,
     pub(super) representation: NationalGenerationWitness,
     /// Authored foreground identities and counted background cohorts fixed at opening.
     pub(super) detail: NationalDetailPartition,
     cohorts: NationalCohortReference,
+    /// The pay table: `Some` exactly under `TradeSet::Twelve`.
+    pay: Option<NationalTradePayReference>,
     residents: NationalResidentWorkforceReference,
     households: NationalHouseholdReference,
     ages: Option<NationalAgeReference>,
@@ -53,12 +60,25 @@ impl NationalSources {
         validate_graph_sources(input, graph, &policy)?;
         let counties = NationalCountyReference::decode_pinned(b(Kind::NationalCounties)?)
             .map_err(|_| EconomicCatalogError::Source(Kind::NationalCounties))?;
-        let cohorts = NationalCohortReference::decode_captured(
+        let cohorts = NationalCohortReference::decode_captured_for(
             b(Kind::NationalCohorts)?,
             b(Kind::CohortFunctionMapping)?,
             &counties,
+            policy.trades,
         )
         .map_err(|_| EconomicCatalogError::Source(Kind::NationalCohorts))?;
+        let pay = if policy.trades == TradeSet::Twelve {
+            Some(
+                NationalTradePayReference::decode_captured(
+                    b(Kind::NationalTradePay)?,
+                    &cohorts,
+                    &counties,
+                )
+                .map_err(|_| EconomicCatalogError::Source(Kind::NationalTradePay))?,
+            )
+        } else {
+            None
+        };
         let residents = NationalResidentWorkforceReference::decode_captured(
             b(Kind::ResidentWorkforce)?,
             &counties,
@@ -100,6 +120,7 @@ impl NationalSources {
             crate::national_economy::NationalOpeningPolicy {
                 policy: &policy,
                 ages: ages.as_ref(),
+                pay: pay.as_ref(),
                 source_hash: babylon_kernel::content_digest::sha256_of(b(
                     Kind::NationalGamePolicy,
                 )?),
@@ -111,12 +132,14 @@ impl NationalSources {
                 aid: opening.aid,
                 support_claimant: opening.support_claimant,
                 household_keys: opening.household_keys,
+                workplace_wages: opening.workplace_wages,
                 companies: opening.companies,
                 finances: opening.finances,
                 representation: opening.representation,
                 detail: opening.detail,
                 counties,
                 cohorts,
+                pay,
                 residents,
                 households,
                 ages,
@@ -126,10 +149,15 @@ impl NationalSources {
             opening.opening,
         ))
     }
+    /// The pay table, when the scenario's trades are twelve.
+    pub(super) const fn pay(&self) -> Option<&NationalTradePayReference> {
+        self.pay.as_ref()
+    }
     pub(super) fn view(&self) -> EconomicSourceView<'_> {
         EconomicSourceView::National {
             counties: &self.counties,
             cohorts: &self.cohorts,
+            pay: self.pay.as_ref(),
             residents: &self.residents,
             households: &self.households,
             ages: self.ages.as_ref(),
@@ -164,6 +192,9 @@ fn validate_graph_sources(
     if policy.household_lifecycle.is_some() {
         required.push(Kind::NationalAges);
     }
+    if policy.trades == TradeSet::Twelve {
+        required.push(Kind::NationalTradePay);
+    }
     super::capture::source_coverage(
         input,
         &required,
@@ -180,7 +211,9 @@ fn validate_graph_sources(
         return Err(EconomicCatalogError::Source(Kind::GraphDeclarations));
     }
     validate_declarations(input)?;
-    let expected_rules = if input.city_pd.is_some() {
+    let expected_rules = if input.county_review.is_some() {
+        super::preset::national_county_review_rules(graph)
+    } else if input.city_pd.is_some() {
         super::preset::national_city_pd_rules(graph)
     } else if input.organizer.is_some() {
         super::preset::national_organizer_rules(graph)

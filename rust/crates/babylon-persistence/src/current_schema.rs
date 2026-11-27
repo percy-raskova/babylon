@@ -30,6 +30,11 @@ const CURRENT_CENSUSES: &[&str] = &[
     include_str!("fixtures/current_schema_observer_census.txt"),
     include_str!("fixtures/current_schema_reader_observer_census.txt"),
 ];
+/// The four embedded census fixtures: owner, reader, observer, reader and observer.
+#[cfg(test)]
+pub(crate) fn current_census_fixtures() -> &'static [&'static str] {
+    CURRENT_CENSUSES
+}
 const OWNER_SQL: &str = "SELECT database_row.datdba = role_row.oid \
     FROM pg_catalog.pg_database AS database_row \
     JOIN pg_catalog.pg_roles AS role_row ON role_row.rolname = CURRENT_USER \

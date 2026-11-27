@@ -13,7 +13,7 @@ use babylon_kernel::content_digest;
 use babylon_material_circuit::{
     AccountId, AgencyAttendanceOutcome, AgencyObservationFundingReceipt, CircuitAccounting,
     FinalDemandPrincipalId, MaterialCatalog, MaterialCircuitState, OrganizationAccountId,
-    PublicAccountId, PublicTransferTreatment,
+    PublicAccountId, PublicAllocation, PublicTransferTreatment, SiteId,
 };
 use babylon_practice_contract::{
     CityPdCaseStatus, CityPdConfig, CityPdDecision, CityPdDecisionReceipt, CityPdOutcome,
@@ -26,6 +26,8 @@ use crate::state_opponent::{self, CityPdState};
 pub enum CityPdRegisterError {
     Binding,
     Account,
+    /// The workplace that employs the force does not receive its payroll in its grant.
+    Payroll,
     Period,
     Decision,
     History,
@@ -279,6 +281,7 @@ impl CityPdRegister {
         {
             return Err(E::Account);
         }
+        validate_payroll_grant(&self.config, &money.financial.public_allocations)?;
         let balance = money
             .book
             .cash(AccountId::Organization(agency))
@@ -473,6 +476,30 @@ pub(crate) fn acquired_evidence(
         basis.extend_from_slice(witness);
     }
     Ok(Some(content_digest::sha256_of(&basis)))
+}
+
+/// The City PD's payroll is paid inside the grant of the public workplace that employs it, so that
+/// grant must cover it. No line is added; the payroll is named in the books, not paid twice.
+fn validate_payroll_grant(
+    config: &CityPdConfig,
+    allocations: &[PublicAllocation],
+) -> Result<(), CityPdRegisterError> {
+    let site = AccountId::Site(SiteId::from_bytes(config.payroll_site_account_id));
+    let public = PublicAccountId::from_bytes(config.public_account_id);
+    let mut grant = 0_i128;
+    for row in allocations.iter().filter(|row| {
+        row.public_account == public
+            && row.recipient == site
+            && row.treatment == PublicTransferTreatment::ProviderOperatingGrant
+    }) {
+        grant = grant
+            .checked_add(row.amount_per_period.micro_units())
+            .ok_or(CityPdRegisterError::Payroll)?;
+    }
+    if grant < config.payroll_micros {
+        return Err(CityPdRegisterError::Payroll);
+    }
+    Ok(())
 }
 
 fn validate_funding(
@@ -992,6 +1019,11 @@ mod tests {
             visit_cost_micros: 24_000_000,
             appropriation_micros: 24_000_000,
             appropriation_priority: 0,
+            payroll_site_account_id: [18; 32],
+            payroll_positions: 3_529,
+            payroll_hours_per_position: 160,
+            payroll_micros: 13_551_360_000_000,
+            visits_per_period: 1,
             content_digest: [8; 32],
             policy_source_digest: [9; 32],
         };
@@ -1059,6 +1091,41 @@ mod tests {
             player_witness_evidence_id: None,
         };
         (config, intent, funding, receipt)
+    }
+
+    fn grant_line(config: &CityPdConfig, micros: i128) -> PublicAllocation {
+        PublicAllocation {
+            public_account: PublicAccountId::from_bytes(config.public_account_id),
+            recipient: AccountId::Site(SiteId::from_bytes(config.payroll_site_account_id)),
+            treatment: PublicTransferTreatment::ProviderOperatingGrant,
+            priority: 0,
+            amount_per_period: Currency::from_micro_units(micros),
+        }
+    }
+
+    #[test]
+    fn the_workplace_grant_must_cover_the_named_payroll() {
+        let (config, ..) = paid_fixture();
+        let covered = [grant_line(&config, config.payroll_micros)];
+        assert_eq!(validate_payroll_grant(&config, &covered), Ok(()));
+        let short = [grant_line(&config, config.payroll_micros - 1)];
+        assert_eq!(
+            validate_payroll_grant(&config, &short),
+            Err(CityPdRegisterError::Payroll)
+        );
+        assert_eq!(
+            validate_payroll_grant(&config, &[]),
+            Err(CityPdRegisterError::Payroll)
+        );
+        // A grant to another workplace, or another kind of line, covers nothing.
+        let mut elsewhere = grant_line(&config, config.payroll_micros);
+        elsewhere.recipient = AccountId::Site(SiteId::from_bytes([99; 32]));
+        let mut appropriation = grant_line(&config, config.payroll_micros);
+        appropriation.treatment = PublicTransferTreatment::AgencyAppropriation;
+        assert_eq!(
+            validate_payroll_grant(&config, &[elsewhere, appropriation]),
+            Err(CityPdRegisterError::Payroll)
+        );
     }
 
     #[test]

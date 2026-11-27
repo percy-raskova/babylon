@@ -106,13 +106,36 @@ pub(super) fn industry_color(key: Option<&str>) -> Color {
         Some(EconomicFunction::BusinessServices) => Color::srgb_u8(193, 168, 226),
         Some(EconomicFunction::CapitalGoods) => theme::COPPER,
         Some(EconomicFunction::ConstructionHousing) => Color::srgb_u8(208, 145, 117),
+        Some(EconomicFunction::ConsumerGoods) => Color::srgb_u8(214, 112, 92),
         Some(EconomicFunction::DistributionTransport) => theme::BLUE,
         Some(EconomicFunction::EnergyUtilities) => theme::YELLOW,
         Some(EconomicFunction::Extraction) => Color::srgb_u8(178, 160, 134),
         Some(EconomicFunction::Food) => Color::srgb_u8(132, 194, 130),
         Some(EconomicFunction::HouseholdServices) => Color::srgb_u8(225, 154, 189),
+        Some(EconomicFunction::LeisureHospitality) => Color::srgb_u8(236, 192, 98),
         Some(EconomicFunction::Manufacturing) => Color::srgb_u8(132, 159, 225),
         Some(EconomicFunction::PublicProvisioning) => Color::srgb_u8(118, 191, 172),
         None => theme::GRAY,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::industry_color;
+    use crate::observer_theme as theme;
+    use babylon_kernel::economic_identity::TradeSet;
+
+    #[test]
+    fn industry_colors_are_distinct_for_twelve_trades() {
+        let colors: Vec<_> = TradeSet::Twelve
+            .functions()
+            .iter()
+            .map(|function| industry_color(Some(function.source_key())))
+            .collect();
+        assert_eq!(colors.len(), 12);
+        for (index, color) in colors.iter().enumerate() {
+            assert_ne!(*color, theme::GRAY);
+            assert!(colors[..index].iter().all(|other| other != color));
+        }
     }
 }

@@ -6,9 +6,13 @@
 #[path = "support/organizer_funding_control.rs"]
 mod control;
 
+use babylon_kernel::currency::Currency;
+use babylon_material_circuit::PublicSpendingRule;
 use babylon_material_circuit::{
-    AccountId, AgencyAttendanceInput, AgencyAttendanceOutcome, AidOutcome, FinalDemandPrincipalId,
-    MaterialCatalog, MaterialCircuitState, MaterialCircuitTransition,
+    AccountId, AgencyAttendanceInput, AgencyAttendanceOutcome, AidOutcome, CashTransferPurpose,
+    CircuitAccounting, FinalDemandPrincipalId, HouseholdNeedBasis, HouseholdPurchasePolicy,
+    HouseholdWant, MarketClearingPolicy, MaterialCatalog, MaterialCircuitState,
+    MaterialCircuitTransition, MoneyTransferPurpose, PricePolicy, TaxBasis, TaxPolicy, WantTier,
 };
 
 #[test]
@@ -486,6 +490,7 @@ fn only_prior_committed_public_appropriation_can_fund_the_agency_shift() {
         public_account: public_id,
         period_cap: control::money(100_000),
         cash_floor: control::money(0),
+        rule: PublicSpendingRule::CappedInOrder,
     });
     economy.financial.public_allocations.push(PublicAllocation {
         public_account: public_id,
@@ -596,6 +601,7 @@ fn same_period_grant_cannot_replace_prior_cash_spent_on_an_earlier_contribution(
         public_account: public_id,
         period_cap: control::money(20),
         cash_floor: control::money(0),
+        rule: PublicSpendingRule::CappedInOrder,
     });
     economy.financial.public_allocations.push(PublicAllocation {
         public_account: public_id,
@@ -816,4 +822,157 @@ fn authored_time_policy_permutation_preserves_paid_result() {
         babylon_material_circuit::encode_material_circuit_state(&permuted, &second.state)
             .expect("permuted state encodes")
     );
+}
+
+/// The second period of the attendance control with a want of the recipient's, a wage tax on the
+/// recipient and a shelf price that a small wage reaches.
+fn taxed_opening_with_a_want() -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, opening) = control::opening();
+    let first = control::close(&catalog, &opening, &[], &[control::collection(1)])
+        .expect("the authored attendance scenario is valid");
+    let (catalog, mut second) = control::controlled_opening(catalog, first.state);
+    let cheap = Currency::from_micro_units(50_000);
+    let mut definition = catalog.into_definition();
+    definition.market_clearing = Some(MarketClearingPolicy {
+        plans_from_spare_money: false,
+        adjustments: Vec::new(),
+        paying_order: vec![
+            (
+                control::good(control::MATERIALS),
+                control::unit(control::MATERIALS),
+            ),
+            (control::good(control::FOOD), control::unit(control::FOOD)),
+        ],
+        household_wants: vec![HouseholdWant {
+            principal_id: control::recipient(),
+            tier: WantTier::Comfort,
+            good_id: control::good(control::MATERIALS),
+            unit_id: control::unit(control::MATERIALS),
+            basis: HouseholdNeedBasis::Households,
+            units_per_basis: 1,
+            scale_bps: babylon_material_circuit::WANT_SCALE_ONE_BPS,
+        }],
+    });
+    let catalog = MaterialCatalog::try_new(definition).expect("the fixture catalog is valid");
+    let recipient = control::recipient();
+    let CircuitAccounting::Monetary(economy) = &mut second.accounting else {
+        panic!("the control is monetary")
+    };
+    for offer in &mut economy
+        .recurring
+        .as_mut()
+        .expect("the control has households")
+        .offers
+    {
+        if offer.good_id == control::good(control::MATERIALS)
+            || offer.good_id == control::good(control::FOOD)
+        {
+            offer.unit_price = cheap;
+            offer.pricing = PricePolicy::Responsive {
+                minimum: cheap,
+                maximum: cheap,
+                step: Currency::from_micro_units(1),
+                target_stock: 0,
+            };
+        }
+    }
+    economy
+        .recurring
+        .as_mut()
+        .expect("the control has households")
+        .household_purchases
+        .push(HouseholdPurchasePolicy {
+            principal_id: recipient,
+            retailer_site_id: control::site(control::RETAILER),
+            good_id: control::good(control::MATERIALS),
+            unit_id: control::unit(control::MATERIALS),
+            target_closing_stock: 0,
+            maximum_purchase: 4,
+            enabled: true,
+        });
+    economy.financial.taxes.push(TaxPolicy {
+        payer: AccountId::Household(recipient),
+        public_recipient: match control::public() {
+            AccountId::Public(id) => id,
+            _ => unreachable!(),
+        },
+        basis: TaxBasis::WageIncome,
+        rate_bps: 1_500,
+        cash_floor: control::money(0),
+    });
+    (catalog, second)
+}
+
+/// A wage that the agency pays after the period's buying is taxed at that same close, and is not
+/// there for a want to buy with: the wage tax held back from wants (`tax_ahead`) leaves it out
+/// because nothing can be bought with it first.
+#[test]
+fn an_agency_wage_is_paid_after_the_buying_and_taxed_at_the_same_close() {
+    let (catalog, second) = taxed_opening_with_a_want();
+    let recipient = control::recipient();
+    let input = input_for(&second, recipient, 100_000);
+    let closed = babylon_material_circuit::close_material_period_with_support(
+        &catalog,
+        &second,
+        &[],
+        &[],
+        &[input],
+    )
+    .expect("the taxed agency scenario closes")
+    .finish_with_workforce(&catalog, control::labor(3), control::members(3))
+    .expect("the taxed agency scenario closes");
+    assert_eq!(
+        closed.agency_attendance[0].outcome,
+        AgencyAttendanceOutcome::Paid
+    );
+    // The recipient held nothing when the period bought, so the want bought nothing, although the
+    // wage alone would have paid for two units at the posted price.
+    let want = closed
+        .household_wants
+        .iter()
+        .find(|row| row.principal_id == recipient)
+        .expect("the want has a row");
+    assert_eq!((want.wanted_quantity, want.bought_quantity), (4, 0));
+    // The wage is booked after the markets and is taxed at this close.
+    let tax: Vec<_> = closed
+        .taxes
+        .iter()
+        .filter(|row| row.payer == AccountId::Household(recipient))
+        .collect();
+    assert_eq!(tax.len(), 1);
+    assert_eq!(
+        (
+            tax[0].taxable_amount.micro_units(),
+            tax[0].assessed.micro_units(),
+            tax[0].collected.micro_units()
+        ),
+        (100_000, 15_000, 15_000)
+    );
+    assert_eq!(
+        control::cash(&closed.state, AccountId::Household(recipient)),
+        85_000
+    );
+    let position = |wanted: &dyn Fn(&MoneyTransferPurpose) -> bool| {
+        closed
+            .money_transfers
+            .iter()
+            .rposition(|row| wanted(&row.purpose))
+            .expect("the transfer was made")
+    };
+    let wage = position(&|purpose| matches!(purpose, MoneyTransferPurpose::WagePayment(_)));
+    let purchase = position(&|purpose| {
+        matches!(
+            purpose,
+            MoneyTransferPurpose::PurchaseReservation(_)
+                | MoneyTransferPurpose::DeliverySettlement(_)
+        )
+    });
+    let tax_paid = position(&|purpose| {
+        matches!(
+            purpose,
+            MoneyTransferPurpose::Cash(CashTransferPurpose::Tax)
+        )
+    });
+    assert!(purchase < wage, "the wage is paid after the buying");
+    assert!(wage < tax_paid, "and taxed after it is paid");
 }

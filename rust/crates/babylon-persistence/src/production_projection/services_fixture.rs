@@ -179,6 +179,10 @@ fn input_coefficients() -> Vec<InputOutputCoefficient> {
     ]
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance fixture builds its whole catalog and state in one place"
+)]
 pub(super) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
     let inventory = vec![
         InventoryRow {
@@ -195,6 +199,7 @@ pub(super) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
         },
     ];
     let catalog = babylon_material_circuit::MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         commodities: commodities(),
         site_logistics_nodes: (1..=3)

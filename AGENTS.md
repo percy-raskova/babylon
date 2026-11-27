@@ -26,7 +26,7 @@ This checkout implements Gate 2. These four executable gates follow:
 <!-- vale ste.UnapprovedWords = YES -->
 <!-- vale ste.NounClusters = YES -->
 
-Read `CONSTITUTION.md` v4.2.0 before a change to game law. ADR221 maps its predecessors and preserves history. `ai/mantras.yaml` is the canonical machine-readable orientation.
+Read `CONSTITUTION.md` v4.4.0 before a change to game law. ADR221 maps its predecessors and preserves history. `ai/mantras.yaml` is the canonical machine-readable orientation.
 
 ## Constitutional compact
 
@@ -38,7 +38,7 @@ Read `CONSTITUTION.md` v4.2.0 before a change to game law. ADR221 maps its prede
 - Classify substantive values as `Observed`, `Derived`, `Calibrated`, or `Designed`.
 - An external-event rule can add only an allowed pressure, burden, or capacity effect.
   It cannot write downstream results.
-- A rule cannot impose a sigmoid or a second fixed response curve.
+- No functional form — sigmoid included — may be imposed on mechanics. A response shape must emerge.
 - Each game display must answer a decision question. An administrative display
   cannot pass a game milestone.
 

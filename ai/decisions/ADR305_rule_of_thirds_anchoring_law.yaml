@@ -1,0 +1,100 @@
+ADR305_rule_of_thirds_anchoring_law:
+  title: Adopt the rule of thirds as the anchoring law for household wealth and for who works
+  date: '2026-11-19'
+  status: accepted
+  issue: PER-366
+  evidence_class: Designed
+  authority:
+    - >-
+      Director, 2026-11-19: "lets also consider as an anchoring law the generalized
+      rule of thirds: 1% of the pops owns 1/3 of the wealth, 1-10% own next third,
+      10-50% own last third, >50% have net zero wealth".
+    - >-
+      Director, 2026-11-19, on the same law: it "can eventually of course
+      fluctuate due to stochasticity or class struggle", because classes fight over
+      taking slices of each other's wealth.
+    - >-
+      Director, 2026-11-19, after the author said the law changes nothing in the
+      first slice: "the rule of thirds is relevant, not in its entirety right now,
+      but we know that roughly 40% of the population makes its living from selling
+      wage labor so that's 40% of the population at least who must work, the top 1%
+      do not work they live entirely off investments, the next top 10% some work
+      some live off investments or they are retired, the bottom 50% work but are
+      more likely to receive welfare and require aid and they don't own homes, i
+      think the proportions of populations who aren't and are working are relevant
+      to this point in the game at least".
+    - >-
+      Director, 2026-11-19, on the first form of ruling R5, which kept every
+      job-seeker out of the next 40%: "yes but the next 40% can have unemployment
+      too, so they can be looking".
+    - Owner ruling of 2026-07-16 on empirical laws (see the test-estate audit).
+  context: |
+    The Director gave the class-agents lane a law for how household wealth is
+    split. The project holds evidence for it. United States wealth shares in 2024
+    were 34.8%, 34.8%, 29.5% and 1.0%, and the lower half held between -1.8% and
+    3.7% of all wealth from 1913 to 2024 (reports/test-estate-audit-2026-07-16.md).
+    The County Review holds no household wealth and no rule that reads it. It
+    does hold households, and it counts who among them is at work. The author
+    first held the whole law back from the slice. The Director corrected that:
+    who works and who does not belongs in it.
+  decision: |
+    R1. THE LAW. In a population the top one hundredth holds a third of the
+    wealth. The next nine hundredths hold a third. The next two fifths hold a
+    third. The lower half holds nothing net.
+
+    R2. WHAT IT BINDS. The four bands of R1 are on the County Review's roster.
+    Every position carries the band its households were in at the opening, and
+    the opening obeys the Director's statement of who works in each band (R5).
+    The shares of wealth bind no rule of that slice, because nothing in it reads
+    or writes household wealth. They bind the opening split of a county's
+    household wealth at the opening of the next slice's step B, when household
+    units hold homes. Step A gives household units accounts of their own and
+    measures each band's share beside the law, by the Director's ruling of
+    2026-11-20, "Measure now, bind with homes" (ADR306 R15). That split is a
+    declared split with its source named.
+
+    R3. AFTER THE OPENING. The split of wealth moves only by what households
+    earn, spend, win and lose. Who works in each band moves only by hires,
+    layoffs and departures. Both are measured each period, and neither is ever
+    pulled back toward the law. This is the form the owner ruled in July: an opening contract without
+    condition, and during a run only the reverse test, that a distribution outside
+    the band has a rupture in its history. Stochasticity and class struggle may
+    move it, as the Director said.
+
+    R4. THE FIRST TASK. In Wayne the two budget groups with business ownership
+    are 70,060 of 700,583 households, about one tenth. The County Review already
+    takes them as the top tenth (R5). The share of household wealth they hold can
+    be measured from the engine's accounts as they are and set beside the two
+    thirds the law gives the top tenth. That measurement is the first task of the
+    next slice, and it tests the reading. It is the author's call.
+
+    R5. WHO WORKS. The top 1% do not work and live entirely off investments. Of
+    the next 9%, some work and some live off investments or are retired. The next
+    40% make their living from selling wage labor and must work. They can be
+    out of work and looking. The bottom 50% work, are more likely to receive
+    welfare and to need aid, and do not own homes. At the opening no household
+    of the top 1% is in the labor force, and every household of the next 40% is
+    in it, at work or looking for work. An opening that cannot meet either
+    condition is refused by name. ADR302 ruling R9 records how the
+    bands are sized and filled. A band is not a class, and no view calls it one.
+  calls:
+    - 'The engine''s households with business ownership are taken as the top tenth (design 7.2; section 2, call 25).'
+    - 'The next 40% is filled by the number of people at work, most first (design 7.2; call 26).'
+    - 'An opening that cannot obey R5 is refused. It is not bent quietly (design 7.2; call 27).'
+    - 'Homes are shown as the law''s words. They are not a figure, because the engine holds no housing tenure.'
+    - 'The measurement in R4 as the first task of the next slice (design 11).'
+    - 'Reading "net zero wealth" as a lower half that holds nothing net.'
+  alternatives_rejected:
+    - 'Enforcing the thirds, or who works, each period. It would pull a measured outcome back by hand.'
+    - 'Building the shares of wealth into this slice. The slice has no wealth to split.'
+    - 'Leaving the whole law to the next slice. The author proposed it, and the Director corrected it.'
+  verification: |
+    This slice: confirm that no rule reads household wealth or a band, that the
+    opening meets the two conditions of R5, and that every period records who
+    works in each band. Next slice: step A measures each band's share beside R1
+    (ADR306); step B's opening contract splits wealth by R1 with its source
+    named, and the run applies only the reverse test of R3.
+  related:
+    - ADR194_director_rulings_batch2_2026_08_11
+    - ADR301_county_review_session
+    - ADR302_household_roster_and_counting

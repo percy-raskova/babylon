@@ -29,6 +29,7 @@ fn home_county_allocation_conserves_all_resident_controls_and_keeps_source_zero_
         &household_budgets(),
         &empty_leaves(),
         &policy,
+        None,
     )
     .expect("the fixture home county allocation fits");
     assert_eq!(allocation.counties.len(), 3144);
@@ -107,6 +108,7 @@ fn kalawao_employees_have_explicit_fallbacks_and_owner_activity_is_not_a_missing
             "/../../../content/scenarios/national/defines.toml"
         )))
         .expect("the authored literal parses as the declared type"),
+        None,
     )
     .expect("the fixture home county allocation fits");
     let county = "15005"
@@ -170,6 +172,7 @@ fn suppressed_jobs_remain_absent_when_peer_weights_place_resident_people() {
         &household_budgets(),
         &empty_leaves(),
         &policy,
+        None,
     )
     .expect("the fixture home county allocation fits");
     assert_eq!(
@@ -221,6 +224,7 @@ fn household_budgets() -> NationalHouseholdAllocation {
         national_resident_workforce::national_resident_workforce_reference()
             .expect("the workforce reference fixture loads"),
         1_000,
+        None,
     )
     .expect("the fixture households fit the authored cohorts")
 }

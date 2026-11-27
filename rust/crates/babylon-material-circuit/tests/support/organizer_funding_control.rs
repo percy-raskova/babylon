@@ -420,6 +420,7 @@ pub fn opening_with_cash(
         ..FinancialInstitutions::empty()
     };
     let catalog = babylon_material_circuit::MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         commodities: (1..=7)
             .map(|g| CommodityDefinition {
@@ -478,6 +479,7 @@ pub fn opening_with_cash(
                 good_id: good(g),
                 unit_id: unit(g),
                 hours_per_unit: 1,
+                units: 1,
             })
             .to_vec(),
         company_portfolios: None,

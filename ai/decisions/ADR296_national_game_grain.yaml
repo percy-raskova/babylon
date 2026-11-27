@@ -53,3 +53,4 @@ ADR296_national_game_grain:
     - ADR258_authored_campaign_parameters
     - ADR293_wayne_resource_allocations
     - ADR294_native_timing_and_memory_qualification
+    - ADR324_the_country_before_more_of_the_small_world

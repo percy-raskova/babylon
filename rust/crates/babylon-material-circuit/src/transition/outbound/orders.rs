@@ -56,6 +56,9 @@ pub(in crate::transition) struct FreightRequest {
     pub(in crate::transition) order_index: usize,
     pub(in crate::transition) requested: u64,
     pub(in crate::transition) resource_per_unit: u64,
+    /// The units that `resource_per_unit` of the resource serve: a request of `q` units uses
+    /// `ceil(q x resource_per_unit / block_units)`. 1 for every resource but a merchant's handling hours.
+    pub(in crate::transition) block_units: u64,
 }
 
 pub(in crate::transition) fn add_request(
@@ -66,6 +69,24 @@ pub(in crate::transition) fn add_request(
     requested: u64,
     resource_per_unit: u64,
 ) -> Result<(), MaterialCircuitError> {
+    add_block_request(
+        groups,
+        count,
+        key,
+        order_index,
+        requested,
+        (resource_per_unit, 1),
+    )
+}
+
+pub(in crate::transition) fn add_block_request(
+    groups: &mut BTreeMap<FreightResourceKey, Vec<FreightRequest>>,
+    count: &mut usize,
+    key: FreightResourceKey,
+    order_index: usize,
+    requested: u64,
+    (resource_per_unit, block_units): (u64, u64),
+) -> Result<(), MaterialCircuitError> {
     *count = count
         .checked_add(1)
         .ok_or(MaterialCircuitError::Arithmetic)?;
@@ -74,6 +95,7 @@ pub(in crate::transition) fn add_request(
         order_index,
         requested,
         resource_per_unit,
+        block_units,
     });
     Ok(())
 }
@@ -201,6 +223,7 @@ pub(in crate::transition) fn resource_groups(
                     order_index: index,
                     requested: order.requested,
                     resource_per_unit: grams,
+                    block_units: 1,
                 },
                 &mut groups,
                 &mut count,
@@ -290,19 +313,18 @@ pub(in crate::transition) fn limit_allocations(
     let groups = residual::aggregate(groups)?;
     for (key, requests) in &groups {
         let total = requests.iter().try_fold(0_u128, |sum, request| {
-            let requested = u128::from(request.requested) * u128::from(request.resource_per_unit);
+            let requested = residual::usage(request)?;
             sum.checked_add(requested)
                 .ok_or(MaterialCircuitError::Arithmetic)
         })?;
         let available = resource_available(catalog, state, inventory, *key, aid)?;
         for request in requests {
-            let resource_request =
-                u128::from(request.requested) * u128::from(request.resource_per_unit);
+            let resource_request = residual::usage(request)?;
             let grant = if u128::from(available) >= total {
                 request.requested
             } else {
-                production::proportional_floor(available, resource_request, total)?
-                    / request.resource_per_unit
+                let share = production::proportional_floor(available, resource_request, total)?;
+                residual::units_within(request, share)?
             };
             allocations[request.order_index] = allocations[request.order_index].min(grant);
         }
@@ -361,7 +383,8 @@ pub(in crate::transition) fn complete_allocations(
 ) -> Result<(Vec<u64>, Vec<u64>), MaterialCircuitError> {
     let base_physical = order_allocations(catalog, state, inventory, groups, count, aid)?;
     let physical = residual::aggregate(groups)?;
-    let ceilings = allocation_matrix(catalog, state, inventory, &physical, count, aid)?.ceilings();
+    let ceilings =
+        allocation_matrix(catalog, state, inventory, &physical, count, aid)?.ceilings()?;
     let request_count = groups.values().try_fold(0_usize, |n, rows| {
         n.checked_add(rows.len())
             .ok_or(MaterialCircuitError::Arithmetic)
@@ -562,19 +585,19 @@ pub(in crate::transition) fn labor_groups(
             continue;
         }
         if let Some(merchant) = merchant_admission::merchant(catalog, order.stock.0) {
-            let hours = merchant_admission::hours_per_unit(
+            let row = merchant_admission::handling_row(
                 catalog,
                 order.stock.0,
                 order.stock.1,
                 order.stock.2,
             )?;
-            add_request(
+            add_block_request(
                 &mut groups,
                 &mut count,
                 FreightResourceKey::Labor(merchant.site_id, merchant.labor_unit_id),
                 index,
                 *quantity,
-                hours,
+                row,
             )?;
         }
     }
@@ -597,18 +620,10 @@ pub(in crate::transition) fn apply_handling(
         let Some(merchant) = merchant_admission::merchant(catalog, order.stock.0).cloned() else {
             continue;
         };
-        let hours = merchant_admission::hours_per_unit(
-            catalog,
-            order.stock.0,
-            order.stock.1,
-            order.stock.2,
-        )?;
-        let needed_hours = feasible_quantity
-            .checked_mul(hours)
-            .ok_or(MaterialCircuitError::Arithmetic)?;
-        let used_hours = handled_quantity
-            .checked_mul(hours)
-            .ok_or(MaterialCircuitError::Arithmetic)?;
+        let (hours, units) =
+            merchant_admission::handling_row(catalog, order.stock.0, order.stock.1, order.stock.2)?;
+        let needed_hours = merchant_admission::block_hours(hours, units, *feasible_quantity)?;
+        let used_hours = merchant_admission::block_hours(hours, units, *handled_quantity)?;
         costs.handling(
             order.stock,
             merchant.labor_unit_id,
@@ -681,6 +696,54 @@ pub(in crate::transition) fn apply_local_fulfillments(
         });
     }
     Ok(receipts)
+}
+
+/// What handing goods to households at the moment of purchase leaves as evidence.
+pub(crate) struct HandOver {
+    pub fulfillments: Vec<LocalRetailFulfillmentReceipt>,
+    pub handling: Vec<MerchantHandlingReceipt>,
+}
+
+/// Hand each sale over to its household now: the merchant's hours and room are spent and the goods
+/// leave its stock, with the postings the first shipping pass makes. Every sale names an order of
+/// `state.final_demand_orders` that is funded and not yet filled.
+///
+/// # Errors
+/// `FinalDemandInvariant` for a sale whose order is missing; the postings' own refusals when the
+/// seller holds less than it sold.
+pub(crate) fn hand_over_household_goods(
+    catalog: &MaterialCatalog,
+    state: &mut MaterialCircuitState,
+    inventory: &mut InventoryLedger,
+    sales: &[(OrderId, u64)],
+    costs: &mut CostClose,
+) -> Result<HandOver, MaterialCircuitError> {
+    let mut allocations = vec![0_u64; state.final_demand_orders.len()];
+    let mut orders = Vec::with_capacity(sales.len());
+    let mut quantities = Vec::with_capacity(sales.len());
+    for &(order_id, quantity) in sales {
+        let index = state
+            .final_demand_orders
+            .binary_search_by_key(&order_id, |row| row.order_id)
+            .map_err(|_| MaterialCircuitError::FinalDemandInvariant)?;
+        let row = &state.final_demand_orders[index];
+        allocations[index] = quantity;
+        quantities.push(quantity);
+        orders.push(OutboundOrder {
+            id: OutboundOrderId::LocalFinalDemand(order_id),
+            stock: (row.retailer_site_id, row.good_id, row.unit_id),
+            requested: quantity,
+            route: None,
+            eligible: true,
+            included: true,
+        });
+    }
+    let handling = apply_handling(catalog, state, &orders, &quantities, &quantities, costs)?;
+    let fulfillments = apply_local_fulfillments(state, inventory, &allocations, costs)?;
+    Ok(HandOver {
+        fulfillments,
+        handling,
+    })
 }
 
 pub(in crate::transition) struct OutboundReceipts {
@@ -859,6 +922,7 @@ pub(in crate::transition) fn add_aid_requests(
                         mandate.good_id,
                         mandate.unit_id,
                     )?,
+                    block_units: 1,
                 },
                 groups,
                 &mut count,

@@ -168,6 +168,39 @@ impl HistoricalCostBook {
         Ok(book)
     }
 
+    /// An owner's capital paid into a workplace after the close: the owner's equity carrying amount and the
+    /// workplace's contributed capital, each up by `amount`; an equity row is made if there is none.
+    ///
+    /// # Errors
+    /// `ValuationInvariant` for a negative amount, an owner that is the workplace itself, or an account the book
+    /// does not hold; `Arithmetic` for a sum that does not fit.
+    pub(crate) fn add_contribution(
+        &mut self,
+        owner: AccountId,
+        issuer: SiteId,
+        amount: Currency,
+    ) -> Result<()> {
+        let site = AccountId::Site(issuer);
+        if amount.micro_units() < 0
+            || owner == site
+            || !self.accounts.contains_key(&owner)
+            || !self.accounts.contains_key(&site)
+        {
+            return Err(MaterialCircuitError::ValuationInvariant);
+        }
+        let equity = self
+            .equity
+            .entry((owner, issuer))
+            .or_insert_with(super::zero);
+        *equity = super::add(*equity, amount)?;
+        let capital = self
+            .accounts
+            .get_mut(&site)
+            .ok_or(MaterialCircuitError::ValuationInvariant)?;
+        capital.contributed_capital = super::add(capital.contributed_capital, amount)?;
+        Ok(())
+    }
+
     #[must_use]
     pub fn snapshot(&self) -> HistoricalCostSnapshot {
         HistoricalCostSnapshot {

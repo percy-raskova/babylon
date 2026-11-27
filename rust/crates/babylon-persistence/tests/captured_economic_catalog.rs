@@ -35,13 +35,15 @@ fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
         catalog.digest(),
         content_digest::sha256_of(catalog.canonical_bytes())
     );
-    assert_eq!(catalog.compiler_version(), "national-world-v11");
+    assert_eq!(catalog.compiler_version(), "national-world-v12");
     let mut obsolete = catalog.canonical_bytes().to_vec();
-    let compiler = b"national-world-v11";
+    let compiler = b"national-world-v12";
     let offset = obsolete
         .windows(compiler.len())
         .position(|s| s == compiler)
         .expect("the fixture sequence holds the addressed position");
+    // An earlier compiler's genuine frame ends before the county review's footer.
+    obsolete.truncate(obsolete.len() - 5);
     for incompatible in *b"08" {
         obsolete[offset + compiler.len() - 1] = incompatible;
         assert_eq!(

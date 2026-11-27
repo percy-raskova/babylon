@@ -329,3 +329,35 @@ fn shared_constructor_matches_explicit_current_interval_foundation() {
             .canonical_bytes()
     );
 }
+
+#[test]
+fn a_membership_field_authored_in_the_declarations_reaches_the_opening_graph() {
+    use crate::identity::CampaignId;
+    use crate::michigan_content::MichiganContentPreset;
+    use crate::test_support::{self, MEMBERSHIP_COUNTIES, MEMBERSHIP_QNAME};
+    use uuid::Uuid;
+    let foundation = MichiganContentPreset::FourWeekStandard
+        .create_foundation_for_campaign(
+            &test_support::catalog_with_membership_values(),
+            CampaignId::from_uuid(Uuid::from_u128(0x653_0b01)),
+        )
+        .expect("the catalog admits an authored membership field and its values");
+    let opening = foundation
+        .opening_graph_state()
+        .expect("the foundation has a stable graph state");
+    let rows = opening.rows().membership_f64();
+    let expected = [
+        (MEMBERSHIP_COUNTIES[0], 7.0_f64),
+        (MEMBERSHIP_COUNTIES[1], -3.0),
+    ];
+    assert_eq!(rows.len(), expected.len());
+    for (member, value) in expected {
+        let row = rows
+            .iter()
+            .find(|row| row.1 == member)
+            .expect("the authored member carries a value row");
+        assert_eq!(row.0, "membership-proof");
+        assert_eq!(row.2, MEMBERSHIP_QNAME);
+        assert_eq!(row.3, value.to_bits());
+    }
+}

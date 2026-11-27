@@ -802,6 +802,13 @@ fn ordinary_numeric_expression_is_typed(
             {
                 declared_numeric_type(types, qname)
             }
+            // §2.10: the membership accessor's declared type decides, as the field's does; its
+            // qname is the fourth item.
+            [SExpr::Atom(Atom::Symbol(form)), _, _, SExpr::Atom(Atom::QName(qname))]
+                if form == "membership-field-of" =>
+            {
+                declared_numeric_type(types, qname)
+            }
             [SExpr::Atom(Atom::Symbol(form)), _, SExpr::Atom(Atom::Symbol(metric))]
                 if form == "metric-of" =>
             {
@@ -916,6 +923,14 @@ fn ordinary_numeric_expression_is_statically_int(
             }
             [SExpr::Atom(Atom::Symbol(form)), _, SExpr::Atom(Atom::QName(qname))]
                 if form == "field-of" =>
+            {
+                types
+                    .fields
+                    .get(qname)
+                    .is_some_and(|declaration| declaration.ty == BslType::Int)
+            }
+            [SExpr::Atom(Atom::Symbol(form)), _, _, SExpr::Atom(Atom::QName(qname))]
+                if form == "membership-field-of" =>
             {
                 types
                     .fields
@@ -1047,6 +1062,11 @@ fn expression_is_typed_probability(
             }
             [SExpr::Atom(Atom::Symbol(form)), _, SExpr::Atom(Atom::QName(qname))]
                 if form == "field-of" =>
+            {
+                declared_probability_type(types, qname)
+            }
+            [SExpr::Atom(Atom::Symbol(form)), _, _, SExpr::Atom(Atom::QName(qname))]
+                if form == "membership-field-of" =>
             {
                 declared_probability_type(types, qname)
             }
@@ -1390,7 +1410,10 @@ fn contains_forbidden_branch_form(expr: &SExpr) -> Option<&str> {
 }
 
 fn projection_is_subject_local(rule: &SExpr, root_path: &[u32]) -> Result<bool, ProbabilityError> {
-    const NONLOCAL: [&str; 14] = [
+    // `membership-field-of` reads the payload of a hyperedge's (hyperedge, member) pair, which
+    // no one subject owns: it is never subject-local (§2.10), whatever its operands name.
+    const NONLOCAL: [&str; 15] = [
+        "membership-field-of",
         "nodes",
         "edges",
         "hyperedges",
@@ -2572,8 +2595,8 @@ mod tests {
 
     use super::*;
     use crate::causal_contract::EvidenceClass;
-    use std::collections::HashMap;
     use std::collections::HashSet;
+    use std::collections::{BTreeMap, HashMap};
 
     #[test]
     #[allow(
@@ -2677,6 +2700,7 @@ mod tests {
             &contract,
             &enums,
             &crate::typecheck::TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields: HashMap::new(),
                 exemptions: &[],
             },

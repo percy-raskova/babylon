@@ -83,7 +83,7 @@ use crate::exemptions::IntensiveAggregationExemption;
 use crate::reader::{Atom, SExpr};
 use crate::score_class::{ClassEnv, ScoreClass};
 use crate::types::{BslType, FieldDecl, FieldKind};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// The §3.4 aggregation-law error codes, plus the two the R9 chapters add
 /// to this module's remit (`E-TYPE-016` on a selection score, `E-TYPE-017`
@@ -152,6 +152,10 @@ pub struct TypeEnv {
     /// The `EXTENSIVE_INTENSIVE_EXEMPTIONS` ledger in force — an exemption
     /// suppresses `E-TYPE-041/042/043` for its named field only (§3.4).
     pub exemptions: &'static [IntensiveAggregationExemption],
+    /// Membership fields: qname -> member `NodeType` member name (e.g. `"SOCIAL_CLASS"`). The qname's
+    /// type and kind stay in `fields`; this map only marks which qnames are membership fields
+    /// (Amendment AG clause i, §2.9: one namespace, one declaration).
+    pub membership_fields: BTreeMap<String, String>,
 }
 
 /// Typecheck one aggregation form: `(op field)` or
@@ -348,6 +352,30 @@ pub fn check_reference_comparisons(
     bindings: &[crate::bindings::BindingDecl],
 ) -> Result<(), TypeError> {
     walk_typed(expr, env, bindings, &HashMap::new(), Check::References)
+}
+
+/// Both membership forms (`membership-field-of`, `update-membership`; §2.10) name their field at
+/// item index 3 of the form, after the hyperedge and the member: a qname declared nowhere is refused here, at load, with the typechecker's own
+/// unknown-field refusal (`code: None`, as the read inside a fold already gets from
+/// [`typecheck_aggregation`]'s field resolution) rather than left to die mid-tick as `E-EVAL-033`.
+///
+/// # Errors
+///
+/// A structural [`TypeError`] naming the unknown field.
+pub fn check_membership_form_fields(expr: &SExpr, env: &TypeEnv) -> Result<(), TypeError> {
+    let SExpr::List(items) = expr else {
+        return Ok(());
+    };
+    if let [SExpr::Atom(Atom::Symbol(head)), _, _, SExpr::Atom(Atom::QName(qname)), ..] =
+        items.as_slice()
+    {
+        if matches!(head.as_str(), "membership-field-of" | "update-membership") {
+            resolve_field(env, qname)?;
+        }
+    }
+    items
+        .iter()
+        .try_for_each(|child| check_membership_form_fields(child, env))
 }
 
 /// **§2.13's no-arithmetic law (D101), the static half (D118, #528 fix
@@ -715,6 +743,14 @@ fn list_kind(
         Some(SExpr::Atom(Atom::Symbol(head))) if head == "field-of" => {
             Ok(field_of_kind(items, env))
         }
+        // §3.4: the membership accessor carries its field's kind the same way; its qname
+        // is the fourth item (after the hyperedge and the member).
+        Some(SExpr::Atom(Atom::Symbol(head))) if head == "membership-field-of" => {
+            Ok(match items.get(3) {
+                Some(SExpr::Atom(Atom::QName(qname))) => field_kind(env, qname),
+                _ => None,
+            })
+        }
         Some(SExpr::Atom(Atom::Symbol(head))) if head == "fold" => fold_kind(items, env, bindings),
         _ => Ok(None),
     }
@@ -962,7 +998,7 @@ mod tests {
     use crate::exemptions::IntensiveAggregationExemption;
     use crate::types::EnumRegistry;
     use crate::types::{BslType, FieldDecl, FieldKind};
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     fn env() -> TypeEnv {
         let mut fields = HashMap::new();
@@ -1007,6 +1043,7 @@ mod tests {
             },
         );
         TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields,
             exemptions: &[],
         }
@@ -1105,6 +1142,7 @@ mod tests {
             },
         );
         let env = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields,
             exemptions: &[],
         };
@@ -1267,6 +1305,7 @@ mod tests {
             )
             .expect("the scenario declares the authored entity");
         TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([
                 (
                     "organization/kind".to_owned(),

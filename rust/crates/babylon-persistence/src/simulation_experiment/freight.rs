@@ -156,6 +156,7 @@ impl CapturedFreight {
         let to = LogisticsNodeId::from_bytes(id("detroit-port-entry-terminal"));
         let catalog =
             MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+                market_clearing: None,
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 site_logistics_nodes: vec![
                     SiteLogisticsNode {

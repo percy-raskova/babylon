@@ -8,6 +8,7 @@ use babylon_graph::memory::MemoryGraph;
 use babylon_graph::stable_element::{StableElementKey, StableElementResolver};
 use babylon_graph::substrate::GraphSubstrate;
 use babylon_kernel::content_digest;
+use babylon_material_circuit::PublicSpendingRule;
 use babylon_material_circuit::{
     AccountId, CashAccount, CircuitAccounting, CommodityDefinition, CommodityKind, GoodId,
     HistoricalCostBook, InstitutionLocation, MaterialCatalog, MaterialCircuitError, MonetaryBook,
@@ -23,6 +24,9 @@ use babylon_tick::material_world::{
     CityPdRegister, CityPdRegisterError, MaterialWorldError, MaterialWorldRegister,
 };
 use std::collections::HashMap;
+
+/// Two positions for four hours at a wage of five: the City PD's named payroll.
+const PAYROLL: i128 = 40;
 
 struct BindingFixture {
     catalog: MaterialCatalog,
@@ -99,7 +103,7 @@ fn binding(resolver: &StableElementResolver, name: &str) -> (u64, StableElementK
     )
 }
 
-fn admitted_opening() -> (MaterialCatalog, MaterialWorldRegister) {
+fn admitted_opening(grant: i128) -> (MaterialCatalog, MaterialWorldRegister) {
     let organizer_aid_fixture::Materials { catalog, mut state } =
         organizer_aid_fixture::aid_opening(false);
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
@@ -129,8 +133,17 @@ fn admitted_opening() -> (MaterialCatalog, MaterialWorldRegister) {
     .expect("the extended book has an explicit opening cost ledger");
     economy.financial.public_budgets.push(PublicBudget {
         public_account: public,
-        period_cap: organizer_aid_fixture::money(10),
+        period_cap: organizer_aid_fixture::money(10 + grant),
         cash_floor: organizer_aid_fixture::money(0),
+        rule: PublicSpendingRule::CappedInOrder,
+    });
+    // The workplace that employs the force carries its payroll inside its operating grant.
+    economy.financial.public_allocations.push(PublicAllocation {
+        public_account: public,
+        recipient: AccountId::Site(organizer_aid_fixture::site(1)),
+        treatment: PublicTransferTreatment::ProviderOperatingGrant,
+        priority: 0,
+        amount_per_period: organizer_aid_fixture::money(grant),
     });
     economy.financial.public_allocations.push(PublicAllocation {
         public_account: public,
@@ -145,7 +158,11 @@ fn admitted_opening() -> (MaterialCatalog, MaterialWorldRegister) {
 }
 
 fn fixture() -> BindingFixture {
-    let (catalog, bare) = admitted_opening();
+    build_fixture(PAYROLL).expect("actual resolver-bound zero-cash opening decision")
+}
+
+fn build_fixture(grant: i128) -> Result<BindingFixture, CityPdRegisterError> {
+    let (catalog, bare) = admitted_opening(grant);
     let resolver = graph_resolver("register/binding");
     let agency = binding(&resolver, "agency");
     let workplace = binding(&resolver, "workplace");
@@ -183,7 +200,7 @@ fn fixture() -> BindingFixture {
     };
     case.case_id = babylon_practice_contract::city_pd_case_id(&case).expect("captured case ID");
     let config = CityPdConfig {
-        schema_version: 1,
+        schema_version: 2,
         campaign_id: organizer.campaign_id,
         actor_id: agency.0,
         authority_id: [2; 16],
@@ -194,10 +211,15 @@ fn fixture() -> BindingFixture {
         investigator_entitlement_id: [6; 32],
         labor_unit_id: [2; 32],
         visit_hours: 2,
-        hourly_wage_micros: 3,
-        visit_cost_micros: 6,
+        hourly_wage_micros: 5,
+        visit_cost_micros: 10,
         appropriation_micros: 10,
         appropriation_priority: 0,
+        payroll_site_account_id: organizer_aid_fixture::site(1).as_bytes(),
+        payroll_positions: 2,
+        payroll_hours_per_position: 4,
+        payroll_micros: PAYROLL,
+        visits_per_period: 1,
         content_digest: [8; 32],
         policy_source_digest: [9; 32],
     };
@@ -208,9 +230,8 @@ fn fixture() -> BindingFixture {
         &catalog,
         bare.state(),
         &resolver,
-    )
-    .expect("actual resolver-bound zero-cash opening decision");
-    BindingFixture {
+    )?;
+    Ok(BindingFixture {
         catalog,
         bare,
         organizer,
@@ -221,7 +242,17 @@ fn fixture() -> BindingFixture {
         },
         city_pd,
         resolver,
-    }
+    })
+}
+
+#[test]
+fn a_workplace_grant_one_micro_unit_short_of_the_payroll_is_refused() {
+    assert!(build_fixture(PAYROLL).is_ok());
+    assert!(build_fixture(PAYROLL + 1).is_ok());
+    assert!(matches!(
+        build_fixture(PAYROLL - 1),
+        Err(CityPdRegisterError::Payroll)
+    ));
 }
 
 fn assert_round_trip(

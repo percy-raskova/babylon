@@ -1,9 +1,11 @@
 //! Native capture preserves sparse workplace evidence without allocating persons.
+use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership, TradeSet};
 use babylon_kernel::geography::CountyGeoid;
 use babylon_persistence::national_cohorts;
 use babylon_persistence::national_cohorts::{
-    NationalCohortReference, NationalCohortReferenceError,
+    CohortKey, NationalCohortReference, NationalCohortReferenceError,
 };
+use babylon_persistence::national_counties;
 
 #[test]
 fn every_source_member_is_preserved_with_explicit_admission() {
@@ -97,4 +99,106 @@ fn source_bytes_cannot_be_replaced_or_extended() {
         NationalCohortReference::decode_pinned(&altered),
         Err(NationalCohortReferenceError::ArtifactDigest)
     );
+}
+
+const V2_TABLE: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../src/babylon/data/reference/economy/national_cohort_reference_v2_2024.csv.gz"
+));
+const V1_TABLE: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../src/babylon/data/reference/economy/national_cohort_reference_2024.csv.gz"
+));
+const V1_MAPPING: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../contracts/national_qcew_function_mapping_v1.json"
+));
+const V2_MAPPING: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../contracts/national_qcew_function_mapping_v2.json"
+));
+
+#[test]
+fn the_v2_table_decodes_with_its_own_pins() {
+    let reference = national_cohorts::national_cohort_reference_v2()
+        .expect("the twelve-trade cohort table decodes");
+    assert_eq!(reference.trades(), TradeSet::Twelve);
+    assert_eq!(reference.groups().len(), 66_920);
+    assert_eq!(reference.admitted_cohorts().count(), 65_065);
+    assert_eq!(
+        reference
+            .groups()
+            .iter()
+            .map(|row| row.members().len())
+            .sum::<usize>(),
+        151_199
+    );
+    assert!(reference
+        .admitted_cohorts()
+        .all(|row| row.key().function.is_some()));
+    let wayne = reference
+        .group(CohortKey {
+            county: CountyGeoid::try_from("26163").expect("Wayne is a county"),
+            function: Some(EconomicFunction::ConsumerGoods),
+            ownership: QcewOwnership::Private,
+        })
+        .expect("Wayne has a private consumer goods group");
+    let jobs = wayne.jobs().known_subtotal();
+    assert!((53_000..54_000).contains(&jobs), "jobs {jobs}");
+    // The decoded table's pins are the hex of the committed metadata, all 32 bytes.
+    let hex = |bytes: [u8; 32]| {
+        bytes.iter().fold(String::new(), |mut text, byte| {
+            use std::fmt::Write;
+            write!(text, "{byte:02x}").expect("a string takes text");
+            text
+        })
+    };
+    assert_eq!(
+        hex(reference.artifact_sha256()),
+        "09ff890974342878a98929adcca5de766fcc7aa54aae869d999827940eb34d12"
+    );
+    assert_eq!(
+        hex(reference.function_mapping_sha256()),
+        "8b5f22d979b82b0fa808bd1579feeb78279768eed915ab5f8900a5820d851c3c"
+    );
+    // Version 1 keeps its meaning.
+    let ten = national_cohorts::national_cohort_reference().expect("the ten-trade table decodes");
+    assert_eq!(ten.trades(), TradeSet::Ten);
+}
+
+#[test]
+fn each_table_needs_its_own_mapping() {
+    let counties = national_counties::national_county_reference().expect("the counties decode");
+    let refusals = [
+        NationalCohortReference::decode_captured_for(
+            V2_TABLE,
+            V1_MAPPING,
+            counties,
+            TradeSet::Twelve,
+        ),
+        NationalCohortReference::decode_captured_for(V1_TABLE, V2_MAPPING, counties, TradeSet::Ten),
+        NationalCohortReference::decode_captured_for(V2_TABLE, V2_MAPPING, counties, TradeSet::Ten),
+        NationalCohortReference::decode_captured_for(
+            V1_TABLE,
+            V1_MAPPING,
+            counties,
+            TradeSet::Twelve,
+        ),
+        NationalCohortReference::decode_captured_for(
+            V1_TABLE,
+            V2_MAPPING,
+            counties,
+            TradeSet::Twelve,
+        ),
+    ];
+    for refusal in refusals {
+        assert!(
+            matches!(
+                refusal,
+                Err(NationalCohortReferenceError::FunctionMapping
+                    | NationalCohortReferenceError::ArtifactDigest)
+            ),
+            "{refusal:?}"
+        );
+    }
 }

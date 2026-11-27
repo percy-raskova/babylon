@@ -18,7 +18,7 @@ use babylon_bsl::vocabulary::{ClosedVocabulary, EnumKind};
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::stable_element::StableElementResolver;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngSeedContext};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 const RULE: &str = r#"(rule material/period
   :role mechanic :evidence designed
@@ -33,6 +33,7 @@ fn load(source: &str) -> Result<LoadedRule, LoadError> {
         &LoadContext {
             vocabulary: &BindingVocabulary::default(),
             types: &TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields: HashMap::new(),
                 exemptions: &[],
             },
@@ -232,6 +233,7 @@ fn material_cycle_graph_evaluator_refuses_without_host_even_with_zero_subjects()
     let error = tick::run_tick(
         &loaded,
         &TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::new(),
             exemptions: &[],
         },

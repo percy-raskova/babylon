@@ -454,13 +454,13 @@ national_verify_disposable() {
 # Hash filesystem files, not Git's index: current untracked codecs participate.
 national_source_paths() {
   local crate dependency
-  for crate in babylon-client babylon-persistence babylon-tick babylon-material-circuit babylon-bsl babylon-graph babylon-kernel babylon-practice-contract; do
+  for crate in babylon-client babylon-persistence babylon-tick babylon-material-circuit babylon-circuit-worlds babylon-recorded-labor babylon-bsl babylon-graph babylon-kernel babylon-practice-contract; do
     [ -f "rust/crates/$crate/Cargo.toml" ] || return 1
     # This is the measured target's complete current local dependency closure.
     # A new local dependency requires an explicit roster update, never omission.
     while IFS= read -r dependency; do
       case "$dependency" in
-        babylon-client | babylon-persistence | babylon-tick | babylon-material-circuit | babylon-bsl | babylon-graph | babylon-kernel | babylon-practice-contract) ;;
+        babylon-client | babylon-persistence | babylon-tick | babylon-material-circuit | babylon-circuit-worlds | babylon-recorded-labor | babylon-bsl | babylon-graph | babylon-kernel | babylon-practice-contract) ;;
         *) die "unrecorded local native dependency: $dependency" ;;
       esac
     done < <(sed -n 's/.*path = "\.\.\/\([^"/]*\)".*/\1/p' "rust/crates/$crate/Cargo.toml")

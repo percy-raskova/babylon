@@ -190,6 +190,7 @@ fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         };
         (
             MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+                market_clearing: None,
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 site_logistics_nodes: vec![
                     SiteLogisticsNode {
@@ -239,6 +240,7 @@ fn opening() -> (MaterialCatalog, MaterialCircuitState) {
                     good_id: good(),
                     unit_id: unit(),
                     hours_per_unit: 1,
+                    units: 1,
                 }],
                 company_portfolios: None,
                 company_payouts: vec![],

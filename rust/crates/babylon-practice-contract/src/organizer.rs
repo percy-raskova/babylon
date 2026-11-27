@@ -40,7 +40,7 @@ pub use types::{
     OrganizerPartner, OrganizerPartnerPolicy, OrganizerPartnerResponse, OrganizerPauseReason,
     OrganizerPeriodJournal, OrganizerPeriodJournalEntries, OrganizerPeriodTimeWitness,
     OrganizerPosition, OrganizerPreview, OrganizerReceipt, OrganizerRefusal, OrganizerReport,
-    OrganizerStandingWork, OrganizerState, OrganizerTimeBindingMode, OrganizerTimeUse,
-    OrganizerView, OrganizerWorkplaceFacts, ResolvedOrganizerPeriod, ORGANIZER_RECENT_OBSERVATIONS,
-    ORGANIZER_RECENT_RECEIPTS, ORGANIZER_SCHEMA_VERSION,
+    OrganizerReviewConfig, OrganizerStandingWork, OrganizerState, OrganizerTimeBindingMode,
+    OrganizerTimeUse, OrganizerView, OrganizerWorkplaceFacts, ResolvedOrganizerPeriod,
+    ORGANIZER_RECENT_OBSERVATIONS, ORGANIZER_RECENT_RECEIPTS, ORGANIZER_SCHEMA_VERSION,
 };

@@ -57,6 +57,10 @@ Five pillars, each traceable to the corpus:
   fills along immutable county arcs, animated ≥600ms with a wire toast naming the cause
   (Rules of Play discernibility). CK3's drift idiom is the model: gradual claim
   transitions, instant snaps reserved for Rupture events.
+
+  *Amended on 2026-11-21 by ADR317.* The sentence "Geometry never animates; claims do." is
+  superseded. It now reads: county outlines never move in plan. Height may change between periods
+  and between readings, and is eased.
 - **Zoom tiers are registers, not magnification** (CK3): national = state-dominant
   political register; regional = county-dominant with polity fills; deep = hex tactical
   register with strictly MORE data per screen area than the tier above (Tufte
@@ -70,6 +74,11 @@ Five pillars, each traceable to the corpus:
 - **One cartographic frame across lenses**: lens switches change ONLY per-feature fill
   functions; camera, projection, geometry identical pre/post switch (Tufte's constant
   frame; testable byte-compare).
+
+  *Amended on 2026-11-21 by ADR317.* The words "camera, projection, geometry identical pre/post
+  switch" are superseded. They now read: camera and projection identical before and after a switch;
+  county outlines never move in plan; height may change between periods and between readings, and
+  is eased.
 - **Pipeline**: TIGER shp → mapshaper (npx, verified available; no GDAL on this box) →
   TopoJSON with shared arcs; also consider `dim_county_geometry` (reference DB, full-res
   WKT — 46KB/county, must be simplified, never served raw). Target ≤ ~2 MB national.
@@ -96,6 +105,10 @@ using one 5-state eligibility grammar everywhere.
 | **Reproduction** | Habitability / overshoot | exists | ecology NEVER a siloed green tab — paired with Φ (Amin's second dimension) |
 | Reproduction | Dispossession | eviction/foreclosure (ref DB, future) | data-grounded expansion |
 
+*Amended on 2026-11-21 by ADR317 (ruling 15).* The words "THE DEFAULT LENS" above are superseded. The
+map's default is now the reading of hours and money: height from hours, colour from money. The Φ
+lens stays as one of the other lenses and can raise and colour the same ground.
+
 Future data-grounded lenses (survey): LODES commuter arcs, QCEW employment, coercive
 infrastructure (repression icons grounding P(S|R)), Gini, broadband organizing-capacity,
 FAF freight corridors. The taxonomy has slots for all of them.
@@ -103,6 +116,10 @@ FAF freight corridors. The taxonomy has slots for all of them.
 ### 3.2 Lens rules
 
 - One lens = one dominant variable = one legend (HOI4/SimCity). No blended heatmaps.
+
+  *Amended on 2026-11-21 by ADR317.* The rule above is superseded. It now reads: a reading may
+  pair two variables on two channels, height and colour, each with its own legend. Two variables
+  are never blended in one channel.
 - Quantitative ramps: single-hue light→dark within Cold Collapse; never >2 hues per
   variable; never rainbow (Tufte). Ramp DOMAIN fixed per session/lens — silent rescaling
   between ticks is banned; domain changes fire a legend flash (Tufte integrity).
@@ -215,6 +232,7 @@ the first into the second** — the game already knows how to look like itself.
   audit on every divider (Envisioning Information).
 - Encodings: ≤2 visual encodings per datum; no pie charts anywhere (composition = ordered
   bars/BreakdownBar); no fake-3D, no texture fills in data surfaces (VDQI).
+  ADR317 restates both for the field: a real scene, not fake-3D; hatching marks sets, never the ground.
 - Type: two registers matching the two voices — terse mono/numeric register for HUD and
   wire headlines; longer serifed/periodic register reserved for deep drill-down theory
   panes (MIM's newspaper vs theory registers). No ALL-CAPS shouting; urgency via
@@ -255,6 +273,9 @@ the first into the second** — the game already knows how to look like itself.
 
 - Scenarios start paused (Vic3 community norm), on the Φ lens, camera framed to the
   scenario region with the world-context backdrop visible.
+
+  *Amended on 2026-11-21 by ADR317 (ruling 15).* The words "on the Φ lens" are superseded: scenarios
+  start on the reading of hours and money.
 - Onboarding: no 67-box scripted tutorial (CK3 telemetry); per-coachmark dismissal
   (Stellaris); new mechanically-significant conventions (claim redraw, contested
   stripes, siege badges) must occur in a guaranteed low-stakes early context before
@@ -272,6 +293,9 @@ the first into the second** — the game already knows how to look like itself.
 1. **Default lens is Imperial Rent Φ**, not political-topology (MIM theory agent;
    §3.2's lens roster reorders accordingly). Political claims remain the layer-2
    substrate under every lens.
+
+   *Amended on 2026-11-21 by ADR317 (ruling 15).* The default is now the reading of hours and money.
+   Φ stays as a lens.
 2. **HexTooltip.tsx and FramingSelector.tsx ownership → Lane B** (audit found them
    unowned in §5). FramingSelector inverts per the Carto addendum: county/state are
    primary framings, hex is the deep-zoom register — default framing changes and its
@@ -361,6 +385,9 @@ truth; `tests/unit/render/test_design_bible_parity.py` fails if this table drift
   cartographic discipline (muted fills, Tufte alpha rules) with crimson/gold as its
   marker duo.
 
+  *Amended on 2026-11-21 by ADR317 (ruling 2).* In the field the map has three marker colours: bone
+  for living labor time, crimson for work stored in goods, gold for money.
+
 ### Juice-pass re-aim (supersedes the gradient items in the ledger inventory)
 
 OUT: gradient hairlines, conic corner accents, rounded anything, soft glows on chrome.
@@ -373,6 +400,9 @@ and gold-tinted on display numerals only.
 ## 10. Acceptance gates (Phase V additions)
 
 - Lens-switch frame invariance (camera/geometry byte-identical pre/post).
+
+  *Amended on 2026-11-21 by ADR317.* The gate now reads: camera and projection identical before and
+  after a switch of lens; county outlines identical in plan; height may differ.
 - Ramp-domain stability across ticks (no silent rescale).
 - Render-count stability for MapStage under chrome toggles (existing pattern).
 - Border re-dissolve produces clean rings (vitest fixture: county set → ring count).
@@ -393,6 +423,7 @@ retroactively where cheap.
    contradiction intensity) → hex fill and edge hue ONLY. Payoff: zoom-merge visibly SUMS stuff
    (ink conserved) while color fields re-render — conservation becomes perceptible; you cannot
    missum an intensive because color doesn't add.
+   ADR317 restates this law for the field: height carries a mass of hours; colour, a share of money.
 2. **Quantities flow, qualities cut.** Continuous animation is reserved for field evolution and
    value flows. Every enum flip — regime change, edge-mode transition, phase state — is a hard
    cut, one frame to the next, never tweened. Qualitative change is discontinuous; the screen
@@ -400,10 +431,21 @@ retroactively where cheap.
 3. **One motion budget per tick.** Only the principal contradiction pulses — the engine already
    names it (`principal_field`, max |df/dt|, System 20). Everything else is static between
    ticks. Tufte-compliant; makes the principal contradiction do player-facing work.
+
+   *Amended on 2026-11-21 by ADR317.* The law above is superseded. It now reads: one motion budget
+   per period, in three beats. Work goes in, goods move through, money comes back. Nothing else
+   moves except what the player touches. With reduced motion, three still frames.
 4. **Curvature is terrain, not decoration.** Geometry deforms only when someone ACTS (topology
    change), never ambiently. HELD until κ actually exists in live runs — Ollivier-Ricci is
    currently dormant math with zero production callers; do not fake terrain from anything else.
 
+   *Amended on 2026-11-21 by ADR317.* The law above is superseded. It now reads: height is a
+   reading, never terrain. The ground may rise and sink by the measured quantity of the reading in
+   force. Curvature stays held until it is live.
+
 Corollaries: storm/rupture markers appear as hard cuts (law 2) with intensity = the engine's own
 Mao score; the vector lens (gradient wind) is law 1's first extensive citizen; reduced-motion
 users get law 3's static frame with the principal contradiction marked, not animated.
+
+*Amended on 2026-11-21 by ADR317.* Under the amended law 3, the static frame for reduced motion is
+three still frames, one for each beat.

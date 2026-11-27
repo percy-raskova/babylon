@@ -32,6 +32,7 @@ HOSTED_STATIC_TASKS = [
 
 PEDANTIC_RUST_PACKAGES = [
     "babylon-bsl",
+    "babylon-circuit-worlds",
     "babylon-client",
     "babylon-evidence",
     "babylon-graph",
@@ -40,6 +41,7 @@ PEDANTIC_RUST_PACKAGES = [
     "babylon-material-circuit",
     "babylon-persistence",
     "babylon-practice-contract",
+    "babylon-recorded-labor",
     "babylon-rtd",
     "babylon-tick",
     "bsl-lint",

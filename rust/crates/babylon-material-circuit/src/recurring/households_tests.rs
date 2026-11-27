@@ -1,3 +1,4 @@
+use crate::tiers::HouseholdLists;
 use crate::AccountId;
 use crate::AidBook;
 use crate::AttendancePlan;
@@ -15,6 +16,7 @@ use crate::FinancialInstitutions;
 use crate::GoodId;
 use crate::HistoricalCostBook;
 use crate::HouseholdCohort;
+use crate::HouseholdKind;
 use crate::HouseholdNeed;
 use crate::HouseholdNeedBasis;
 use crate::HouseholdPurchasePolicy;
@@ -22,6 +24,7 @@ use crate::HouseholdStock;
 use crate::HouseholdTimeAccounting;
 use crate::InventoryRow;
 use crate::LaborCapacityRow;
+use crate::LaborCompensation;
 use crate::LocalRetailFulfillmentReceipt;
 use crate::LogisticsNodeId;
 use crate::MaterialCatalog;
@@ -36,13 +39,17 @@ use crate::MonetaryCircuit;
 use crate::OrderId;
 use crate::OutboundOrderId;
 use crate::PricePolicy;
+use crate::PublicAccountId;
 use crate::PurchaseEscrow;
 use crate::RecurringEconomy;
 use crate::SellerOffer;
 use crate::SiteId;
 use crate::SiteLogisticsNode;
+use crate::StaffingMemberId;
 use crate::StockCarryingValue;
+use crate::TaxBasis;
 use crate::UnitId;
+use crate::WantTier;
 use babylon_kernel::currency::Currency;
 
 fn cash(n: i128) -> Currency {
@@ -151,7 +158,7 @@ fn opening_economy(household_cash: i128, stock: u64) -> MonetaryCircuit {
             site_id: s(),
             unit_id: hours(),
             payee: h(),
-            compensation: crate::LaborCompensation::Wage(cash(4)),
+            compensation: LaborCompensation::Wage(cash(4)),
         }],
         recurring: Some(Box::new(recurring(stock))),
     }
@@ -193,6 +200,7 @@ fn opening(household_cash: i128, stock: u64) -> (MaterialCatalog, MaterialCircui
     };
     fixture(
         MaterialCatalogDefinition {
+            market_clearing: None,
             capacity_policy: CapacitySupply::FiniteSchedule,
             site_logistics_nodes: vec![SiteLogisticsNode {
                 site_id: s(),
@@ -222,6 +230,7 @@ fn opening(household_cash: i128, stock: u64) -> (MaterialCatalog, MaterialCircui
                 good_id: g(),
                 unit_id: u(),
                 hours_per_unit: 1,
+                units: 1,
             }],
             company_portfolios: None,
             company_payouts: vec![],
@@ -593,6 +602,7 @@ fn one_household_budget_is_shared_in_canonical_need_order() {
             good_id: other,
             unit_id: u(),
             hours_per_unit: 1,
+            units: 1,
         });
     let rows = household_rows(&mut state);
     rows.household_stocks.push(HouseholdStock {
@@ -662,4 +672,316 @@ fn consumption_cannot_skip_an_unresolved_generated_order() {
         Err(MaterialCircuitError::PurchaseInvariant)
     );
     assert_eq!(state, before);
+}
+
+/// The fixture with a market policy, and one comfort want of a second good that is no need: its
+/// commodity, its handling, its offer and its purchase row, but no need and no stock row.
+fn opening_with_a_want() -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut state) = opening(16, 0);
+    let mut catalog = catalog.into_definition();
+    let other = GoodId::from_bytes([33; 32]);
+    catalog.commodities.push(CommodityDefinition {
+        good_id: other,
+        unit_id: u(),
+        kind: crate::CommodityKind::Storable { grams_per_unit: 1 },
+    });
+    catalog
+        .handling_coefficients
+        .push(MerchantHandlingCoefficient {
+            site_id: s(),
+            good_id: other,
+            unit_id: u(),
+            hours_per_unit: 1,
+            units: 1,
+        });
+    catalog.market_clearing = Some(crate::MarketClearingPolicy {
+        plans_from_spare_money: false,
+        adjustments: Vec::new(),
+        paying_order: vec![(g(), u()), (other, u())],
+        household_wants: vec![crate::HouseholdWant {
+            principal_id: h(),
+            tier: crate::WantTier::Comfort,
+            good_id: other,
+            unit_id: u(),
+            basis: HouseholdNeedBasis::Persons,
+            units_per_basis: 1,
+            scale_bps: crate::WANT_SCALE_ONE_BPS,
+        }],
+    });
+    let rows = household_rows(&mut state);
+    for key in [g(), other] {
+        rows.offers.retain(|offer| offer.good_id != key);
+        rows.offers.push(SellerOffer {
+            site_id: s(),
+            good_id: key,
+            unit_id: u(),
+            unit_price: cash(4),
+            pricing: PricePolicy::Responsive {
+                minimum: cash(4),
+                maximum: cash(4),
+                step: cash(1),
+                target_stock: 0,
+            },
+        });
+    }
+    rows.offers
+        .sort_by_key(|r| (r.site_id, r.good_id, r.unit_id));
+    rows.household_purchases.push(HouseholdPurchasePolicy {
+        principal_id: h(),
+        retailer_site_id: s(),
+        good_id: other,
+        unit_id: u(),
+        target_closing_stock: 0,
+        maximum_purchase: 4,
+        enabled: true,
+    });
+    rows.household_purchases
+        .sort_by_key(|r| (r.principal_id, r.good_id, r.unit_id));
+    (
+        MaterialCatalog::try_new(catalog).expect("valid fixture definitions"),
+        state,
+    )
+}
+
+#[test]
+fn a_purchase_row_for_a_want_alone_is_admitted() {
+    let (catalog, state) = opening_with_a_want();
+    super::validate(&catalog, &state).expect("a want-only purchase row passes validation");
+}
+
+#[test]
+fn a_want_without_a_purchase_row_is_refused() {
+    let (catalog, mut state) = opening_with_a_want();
+    household_rows(&mut state)
+        .household_purchases
+        .retain(|row| row.good_id == g());
+    assert_eq!(
+        super::validate(&catalog, &state),
+        Err(MaterialCircuitError::FinalDemandInvariant)
+    );
+}
+
+#[test]
+fn a_purchase_row_for_a_want_alone_with_a_stock_target_is_refused() {
+    let (catalog, mut state) = opening_with_a_want();
+    for row in &mut household_rows(&mut state).household_purchases {
+        if row.good_id != g() {
+            row.target_closing_stock = 1;
+        }
+    }
+    assert_eq!(
+        super::validate(&catalog, &state),
+        Err(MaterialCircuitError::FinalDemandInvariant)
+    );
+}
+
+/// The fixture with a want, paid a wage of $4.000012 at its opening (4 hours at $1.000003), taxed at
+/// two wage rates (20 and 5 percent) by two public accounts. The amounts are odd so that every
+/// rate rounds.
+fn taxed_with_a_want() -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut state) = opening_with_a_want();
+    let publics = [
+        PublicAccountId::from_bytes([40; 32]),
+        PublicAccountId::from_bytes([41; 32]),
+    ];
+    let location = "county:26163"
+        .parse()
+        .expect("the authored literal parses as the declared type");
+    let e = economy(&mut state);
+    e.employment[0].compensation = LaborCompensation::Wage(cash(1_000_003));
+    let mut accounts = vec![
+        CashAccount {
+            id: AccountId::Site(s()),
+            cash: cash(10_000_000),
+        },
+        CashAccount {
+            id: AccountId::Household(h()),
+            cash: cash(16),
+        },
+    ];
+    for public in publics {
+        accounts.push(CashAccount {
+            id: AccountId::Public(public),
+            cash: cash(0),
+        });
+    }
+    e.book = MonetaryBook::open(accounts).expect("the fixture opens the authored source");
+    e.costs = HistoricalCostBook::open(
+        &e.book,
+        [AccountId::Site(s()), AccountId::Household(h())]
+            .into_iter()
+            .map(|owner| StockCarryingValue {
+                owner,
+                good_id: g(),
+                unit_id: u(),
+                amount: cash(0),
+            })
+            .collect(),
+        vec![],
+        vec![],
+        vec![],
+    )
+    .expect("the fixture opens the authored source");
+    for (public, rate_bps) in publics.into_iter().zip([2_000, 500]) {
+        e.financial.locations.push(crate::InstitutionLocation {
+            account: AccountId::Public(public),
+            location,
+        });
+        e.financial.taxes.push(crate::TaxPolicy {
+            payer: AccountId::Household(h()),
+            public_recipient: public,
+            basis: TaxBasis::WageIncome,
+            rate_bps,
+            cash_floor: cash(0),
+        });
+    }
+    (catalog, state)
+}
+
+#[test]
+fn the_tax_held_back_is_what_the_close_assesses_to_the_millionth() {
+    let (catalog, state) = taxed_with_a_want();
+    let closed = crate::advance_material_circuit(&catalog, &state)
+        .expect("the taxed fixture's period closes");
+    let paid: i128 = closed
+        .wage_accruals
+        .iter()
+        .map(|accrual| accrual.amount.micro_units())
+        .sum();
+    assert_eq!(paid, 4_000_012, "the wage was booked at the opening");
+    let opened = HouseholdLists::open(&catalog, &state, &closed.wage_accruals)
+        .expect("the taxed fixture's lists open");
+    for principal in [h(), FinalDemandPrincipalId::from_bytes([77; 32])] {
+        let assessed: i128 = closed
+            .taxes
+            .iter()
+            .filter(|row| {
+                row.payer == AccountId::Household(principal) && row.basis == TaxBasis::WageIncome
+            })
+            .map(|row| row.assessed.micro_units())
+            .sum();
+        assert_eq!(
+            opened.tax_ahead(principal).micro_units(),
+            assessed,
+            "the account {principal:?}"
+        );
+    }
+    // Each row is rounded alone: the two rates give two assessments that are not zero.
+    assert!(closed
+        .taxes
+        .iter()
+        .filter(|row| row.payer == AccountId::Household(h()))
+        .all(|row| row.assessed.micro_units() > 0));
+    assert!(opened.tax_ahead(h()).micro_units() > 0);
+}
+
+/// The fixture with a market policy that asks for the resting price, or not, and `hours` made available by the
+/// workplace's one member in period 1.
+fn resting_fixture(asks: bool, hours: u64) -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut state) = opening_with_a_want();
+    let mut definition = catalog.into_definition();
+    if asks {
+        definition
+            .market_clearing
+            .as_mut()
+            .expect("the fixture has a policy")
+            .adjustments = vec![crate::AdjustmentRule::RestingPrice];
+    }
+    economy(&mut state).member_labor[0].available_hours = hours;
+    fixture(definition, state)
+}
+
+#[test]
+fn a_workplace_with_hands_does_not_rest() {
+    let (catalog, state) = resting_fixture(true, 8);
+    assert!(!crate::adjustment::rests(&catalog, &state, s(), 0));
+}
+
+#[test]
+fn a_workplace_with_goods_on_offer_does_not_rest() {
+    let (catalog, state) = resting_fixture(true, 0);
+    assert!(!crate::adjustment::rests(&catalog, &state, s(), 3));
+}
+
+#[test]
+fn an_idle_workplace_rests() {
+    let (catalog, state) = resting_fixture(true, 0);
+    assert!(crate::adjustment::rests(&catalog, &state, s(), 0));
+    let (catalog, state) = resting_fixture(false, 0);
+    assert!(
+        !crate::adjustment::rests(&catalog, &state, s(), 0),
+        "a catalog that does not ask never rests"
+    );
+}
+
+#[test]
+fn only_the_closing_period_s_hours_count() {
+    let (catalog, mut state) = resting_fixture(true, 0);
+    economy(&mut state)
+        .member_labor
+        .push(crate::MemberLaborCapacityRow {
+            member_id: StaffingMemberId::from_bytes(s().as_bytes()),
+            period: 2,
+            available_hours: 8,
+        });
+    assert!(crate::adjustment::rests(&catalog, &state, s(), 0));
+    let other = SiteId::from_bytes([42; 32]);
+    assert!(
+        crate::adjustment::rests(&catalog, &state, other, 0),
+        "a site with no employment terms has no hands"
+    );
+}
+
+#[test]
+fn only_a_catalog_that_asks_quotes_goods_before_the_plans() {
+    use crate::AdjustmentRule;
+    let ask = |rules: Vec<AdjustmentRule>| {
+        let (catalog, state) = opening_with_a_want();
+        let mut definition = catalog.into_definition();
+        definition
+            .market_clearing
+            .as_mut()
+            .expect("the fixture has a policy")
+            .adjustments = rules;
+        fixture(definition, state).0
+    };
+    assert!(!crate::recurring::prices::asks_step_down(&ask(vec![])));
+    assert!(!crate::recurring::prices::asks_step_down(&ask(vec![
+        AdjustmentRule::RestingPrice
+    ])));
+    assert!(crate::recurring::prices::asks_step_down(&ask(vec![
+        AdjustmentRule::GoodsStepDown
+    ])));
+}
+
+#[test]
+fn a_scaled_want_is_floored_on_its_whole_quantity() {
+    let want = |units_per_basis: u64, scale_bps: u32| crate::HouseholdWant {
+        principal_id: h(),
+        tier: WantTier::Luxury,
+        good_id: g(),
+        unit_id: u(),
+        basis: HouseholdNeedBasis::Persons,
+        units_per_basis,
+        scale_bps,
+    };
+    let cohort = |persons: u64| crate::HouseholdCohort {
+        kind: HouseholdKind::Ordinary,
+        principal_id: h(),
+        households: persons,
+        persons,
+    };
+    assert_eq!(want(2, 10_000).quantity(&cohort(5)), Ok(10));
+    assert_eq!(want(2, 12_500).quantity(&cohort(5)), Ok(12));
+    assert_eq!(want(2, 20_000).quantity(&cohort(5)), Ok(20));
+    assert_eq!(want(1, 15_000).quantity(&cohort(3)), Ok(4));
+    assert_eq!(want(1, 9_000).quantity(&cohort(10)), Ok(9));
+    assert_eq!(
+        want(u64::MAX, 20_000).quantity(&cohort(1)),
+        Err(MaterialCircuitError::Arithmetic)
+    );
+    assert_eq!(
+        want(u64::MAX, 10_000).quantity(&cohort(2)),
+        Err(MaterialCircuitError::Arithmetic)
+    );
 }

@@ -457,6 +457,7 @@ fn stable_graph_row_count(
         rows.edge_f64().len(),
         rows.node_currency().len(),
         rows.hyperedge_f64().len(),
+        rows.membership_f64().len(),
     ]
     .into_iter()
     .try_fold(0_usize, usize::checked_add)

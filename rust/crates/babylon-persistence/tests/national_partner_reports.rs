@@ -76,6 +76,11 @@ fn undisclosed_representative_stock_and_price_leave_local_disclosure_unchanged()
             .with_city_pd(catalog, city_pd.clone(), resolver)
             .expect("same opponent binding");
     }
+    if let Some(county) = original.county_review() {
+        changed = changed
+            .with_county_review(catalog, county.clone(), Some(resolver))
+            .expect("same county review binding");
+    }
     assert_ne!(
         original.digest(),
         changed.digest(),

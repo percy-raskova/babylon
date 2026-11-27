@@ -1,9 +1,10 @@
 //! Canonical immutable-catalog bytes; the digest travels with every state.
 
+use crate::AdjustmentRule;
 use crate::MaintenanceBinding;
 use crate::{
     AidMandate, AidTransport, HouseholdNeed, HouseholdTimeCommitment, HouseholdTimePolicy,
-    MaterialCatalogDefinition, MaterialCircuitError, ServiceInputPolicy,
+    HouseholdWant, MaterialCatalogDefinition, MaterialCircuitError, ServiceInputPolicy,
 };
 use crate::{CapacitySupply, CompanyConditionOrder};
 
@@ -11,6 +12,73 @@ use crate::{CapacitySupply, CompanyConditionOrder};
 pub const MATERIAL_CATALOG_DOMAIN_BYTES: &[u8] = b"babylon.material-catalog.v2";
 
 pub(super) const CATALOG_SCHEMA_VERSION: u16 = 2;
+
+/// A catalog with a market policy writes this version, then the version it would write without one.
+const MARKET_CATALOG_SCHEMA_VERSION: u16 = 6;
+
+/// A market policy with household wants writes this version where 6 is written.
+const MARKET_TIERS_CATALOG_SCHEMA_VERSION: u16 = 7;
+
+/// A market policy that plans from spare money writes this version first, then every byte the same
+/// catalog writes without it.
+const SPARE_MONEY_CATALOG_SCHEMA_VERSION: u16 = 8;
+
+/// A market policy that asks for adjustments writes this version first, then its rules, then every byte the
+/// same catalog writes without them.
+const ADJUSTMENT_CATALOG_SCHEMA_VERSION: u16 = 9;
+
+/// A catalog with a handling row of more than one unit writes this version right after the domain bytes, then
+/// every byte the same catalog writes without it, then a tail with each handling row's units.
+const HANDLING_BLOCK_CATALOG_SCHEMA_VERSION: u16 = 10;
+
+/// A catalog with a want at a scale other than 10,000 writes this version right after the domain bytes (after
+/// version 10 where both are written), then every byte the same catalog writes without it, then a tail with each
+/// want row's scale (after the handling blocks' tail where both are written).
+const WANT_SCALE_CATALOG_SCHEMA_VERSION: u16 = 11;
+
+fn has_scaled_wants(catalog: &MaterialCatalogDefinition) -> bool {
+    catalog.market_clearing.as_ref().is_some_and(|policy| {
+        policy
+            .household_wants
+            .iter()
+            .any(|row| row.scale_bps != crate::WANT_SCALE_ONE_BPS)
+    })
+}
+
+fn append_want_scales(
+    out: &mut Vec<u8>,
+    catalog: &MaterialCatalogDefinition,
+) -> Result<(), MaterialCircuitError> {
+    let rows = catalog
+        .market_clearing
+        .as_ref()
+        .map_or(&[][..], |policy| policy.household_wants.as_slice());
+    let count = u32::try_from(rows.len()).map_err(|_| MaterialCircuitError::WireLimit)?;
+    out.extend_from_slice(&count.to_be_bytes());
+    for row in rows {
+        out.extend_from_slice(&row.scale_bps.to_be_bytes());
+    }
+    Ok(())
+}
+
+fn append_adjustments(
+    out: &mut Vec<u8>,
+    rules: &[AdjustmentRule],
+) -> Result<(), MaterialCircuitError> {
+    if rules.is_empty() {
+        return Ok(());
+    }
+    out.extend_from_slice(&ADJUSTMENT_CATALOG_SCHEMA_VERSION.to_be_bytes());
+    let count = u16::try_from(rules.len()).map_err(|_| MaterialCircuitError::WireLimit)?;
+    out.extend_from_slice(&count.to_be_bytes());
+    for rule in rules {
+        out.push(rule.tag());
+        if let AdjustmentRule::OwnerRestart { outlay_periods } = rule {
+            out.extend_from_slice(&outlay_periods.to_be_bytes());
+        }
+    }
+    Ok(())
+}
 
 fn append_commitment(out: &mut Vec<u8>, row: &HouseholdTimeCommitment) {
     out.push(row.basis as u8);
@@ -108,6 +176,17 @@ pub(super) fn append_needs(
     })
 }
 
+fn append_wants(out: &mut Vec<u8>, rows: &[HouseholdWant]) -> Result<(), MaterialCircuitError> {
+    super::state::append_bounded_rows(out, rows, crate::MAX_HOUSEHOLD_WANTS, |b, row| {
+        b.extend_from_slice(&row.principal_id.as_bytes());
+        b.push(row.tier as u8);
+        b.extend_from_slice(&row.good_id.as_bytes());
+        b.extend_from_slice(&row.unit_id.as_bytes());
+        b.push(row.basis as u8);
+        b.extend_from_slice(&row.units_per_basis.to_be_bytes());
+    })
+}
+
 fn append_maintenance(out: &mut Vec<u8>, binding: Option<&MaintenanceBinding>) {
     out.push(u8::from(binding.is_some()));
     if let Some(binding) = binding {
@@ -155,10 +234,38 @@ fn append_policy(out: &mut Vec<u8>, policy: &CapacitySupply) -> Result<(), Mater
 ///
 /// # Errors
 /// Returns the first row-bound refusal.
+/// The versions of the tails written right after the domain bytes: handling blocks (10), then want scales (11).
+/// Each says whether its tail follows the body.
+fn append_tail_versions(out: &mut Vec<u8>, catalog: &MaterialCatalogDefinition) -> (bool, bool) {
+    let blocks = catalog
+        .handling_coefficients
+        .iter()
+        .any(|row| row.units != 1);
+    if blocks {
+        out.extend_from_slice(&HANDLING_BLOCK_CATALOG_SCHEMA_VERSION.to_be_bytes());
+    }
+    let scales = has_scaled_wants(catalog);
+    if scales {
+        out.extend_from_slice(&WANT_SCALE_CATALOG_SCHEMA_VERSION.to_be_bytes());
+    }
+    (blocks, scales)
+}
+
 pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, MaterialCircuitError> {
     let mut out = Vec::new();
     out.extend_from_slice(MATERIAL_CATALOG_DOMAIN_BYTES);
     out.push(0);
+    let (blocks, scales) = append_tail_versions(&mut out, catalog);
+    if let Some(policy) = &catalog.market_clearing {
+        append_adjustments(&mut out, &policy.adjustments)?;
+    }
+    if catalog
+        .market_clearing
+        .as_ref()
+        .is_some_and(|policy| policy.plans_from_spare_money)
+    {
+        out.extend_from_slice(&SPARE_MONEY_CATALOG_SCHEMA_VERSION.to_be_bytes());
+    }
     let version = match catalog
         .company_portfolios
         .map(|policy| policy.condition_order)
@@ -168,6 +275,14 @@ pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, Mate
         None if catalog.company_payouts.is_empty() => CATALOG_SCHEMA_VERSION,
         None => 3,
     };
+    if let Some(policy) = &catalog.market_clearing {
+        let market = if policy.household_wants.is_empty() {
+            MARKET_CATALOG_SCHEMA_VERSION
+        } else {
+            MARKET_TIERS_CATALOG_SCHEMA_VERSION
+        };
+        out.extend_from_slice(&market.to_be_bytes());
+    }
     out.extend_from_slice(&version.to_be_bytes());
     append_policy(&mut out, &catalog.capacity_policy)?;
     super::state::append_site_nodes(&mut out, &catalog.site_logistics_nodes)?;
@@ -209,6 +324,29 @@ pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, Mate
         out.extend_from_slice(&policy.high_utilization_bps.to_be_bytes());
         out.push(policy.history_periods);
         out.extend_from_slice(&policy.modest_expansion_bps.to_be_bytes());
+    }
+    if let Some(policy) = &catalog.market_clearing {
+        let count = u32::try_from(policy.paying_order.len())
+            .map_err(|_| MaterialCircuitError::WireLimit)?;
+        out.extend_from_slice(&count.to_be_bytes());
+        for (good, unit) in &policy.paying_order {
+            out.extend_from_slice(&good.as_bytes());
+            out.extend_from_slice(&unit.as_bytes());
+        }
+        if !policy.household_wants.is_empty() {
+            append_wants(&mut out, &policy.household_wants)?;
+        }
+    }
+    if blocks {
+        let count = u32::try_from(catalog.handling_coefficients.len())
+            .map_err(|_| MaterialCircuitError::WireLimit)?;
+        out.extend_from_slice(&count.to_be_bytes());
+        for row in &catalog.handling_coefficients {
+            out.extend_from_slice(&row.units.to_be_bytes());
+        }
+    }
+    if scales {
+        append_want_scales(&mut out, catalog)?;
     }
     Ok(out)
 }

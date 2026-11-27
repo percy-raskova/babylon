@@ -419,6 +419,14 @@ pub const GOVERNED_RULE_ATTRIBUTIONS: &[GovernedRuleAttribution] = &[
     governed_attribution("vitality/subsistence-and-death", RuleRole::Mechanic),
     governed_attribution("vitality/subsistence-clearing", RuleRole::Mechanic),
     governed_attribution("vitality/subsistence-mortality", RuleRole::Mechanic),
+    GovernedRuleAttribution {
+        rule_id: "welfare/county-review-session",
+        role: RuleRole::Intent,
+        evidence: EvidenceClass::Designed,
+        owner: "Director",
+        date: "2026-11-19",
+        adr: "ADR301",
+    },
 ];
 
 /// One of the six graph-shape operations BSL can express.
@@ -464,12 +472,17 @@ pub enum EffectSignature {
     OrganizerPractice,
     /// One overt visit limited to lawfully available public records.
     CityPdObserve,
+    /// The county's household review session: it ranks households by wage tax paid, sets next
+    /// period's relief support lines and records who came.
+    CountyReview,
     /// A node attribute qualified name.
     NodeField(String),
     /// An edge attribute qualified name.
     EdgeField(String),
     /// A hyperedge attribute qualified name.
     HyperedgeField(String),
+    /// A membership payload field qualified name (`update-membership`).
+    MembershipField(String),
     /// A full `EventType/MEMBER` event reference.
     Event(String),
     /// A graph-shape operation. Element identities are deliberately absent.
@@ -500,12 +513,16 @@ pub enum AllowedEffect {
     OrganizerPractice,
     /// The exact bounded City PD native observation operation.
     CityPdObserve,
+    /// The exact bounded county review native session operation.
+    CountyReview,
     /// A node field.
     NodeField(&'static str),
     /// An edge field.
     EdgeField(&'static str),
     /// A hyperedge field.
     HyperedgeField(&'static str),
+    /// A membership payload field.
+    MembershipField(&'static str),
     /// A full event reference.
     Event(&'static str),
 }
@@ -514,10 +531,12 @@ impl AllowedEffect {
     fn matches(self, actual: &EffectSignature) -> bool {
         match (self, actual) {
             (Self::OrganizerPractice, EffectSignature::OrganizerPractice)
-            | (Self::CityPdObserve, EffectSignature::CityPdObserve) => true,
+            | (Self::CityPdObserve, EffectSignature::CityPdObserve)
+            | (Self::CountyReview, EffectSignature::CountyReview) => true,
             (Self::NodeField(expected), EffectSignature::NodeField(actual))
             | (Self::EdgeField(expected), EffectSignature::EdgeField(actual))
             | (Self::HyperedgeField(expected), EffectSignature::HyperedgeField(actual))
+            | (Self::MembershipField(expected), EffectSignature::MembershipField(actual))
             | (Self::Event(expected), EffectSignature::Event(actual)) => expected == actual,
             _ => false,
         }
@@ -551,6 +570,16 @@ const RECOGNITION_ADR: &str = "ADR224";
 
 /// The complete governed allowance table. External events remain default-deny.
 pub const GOVERNED_EFFECT_ALLOWANCES: &[GovernedEffectAllowance] = &[
+    GovernedEffectAllowance {
+        rule_id: "welfare/county-review-session",
+        role: RuleRole::Intent,
+        effect: AllowedEffect::CountyReview,
+        kind: AllowanceKind::NextWeekIntent,
+        reason: "set next period's household support lines from the county's list and record who came",
+        owner: "Director",
+        date: "2026-11-19",
+        adr: "ADR301",
+    },
     GovernedEffectAllowance {
         rule_id: "state-opponent/observe-public-activity",
         role: RuleRole::Intent,
@@ -890,6 +919,8 @@ pub fn validate_governed_attribution(contract: &RuleContract) -> Result<(), Cont
 fn field_effect(items: &[SExpr], kind: &str) -> Option<EffectSignature> {
     let field = match kind {
         "update-node" | "update-edge" | "update-hyperedge" => items.get(2),
+        // The membership form names the pair first, so its qname sits one place later (#653).
+        "update-membership" => items.get(3),
         _ => None,
     };
     let Some(SExpr::Atom(Atom::QName(field))) = field else {
@@ -899,6 +930,7 @@ fn field_effect(items: &[SExpr], kind: &str) -> Option<EffectSignature> {
         "update-node" => Some(EffectSignature::NodeField(field.clone())),
         "update-edge" => Some(EffectSignature::EdgeField(field.clone())),
         "update-hyperedge" => Some(EffectSignature::HyperedgeField(field.clone())),
+        "update-membership" => Some(EffectSignature::MembershipField(field.clone())),
         _ => None,
     }
 }
@@ -1001,6 +1033,8 @@ fn walk_effects_with_limits(
             effects.push(EffectSignature::OrganizerPractice);
         } else if head == "city-pd-observe" {
             effects.push(EffectSignature::CityPdObserve);
+        } else if head == "county-review" {
+            effects.push(EffectSignature::CountyReview);
         } else if let Some(effect) = field_effect(items, head) {
             effects.push(effect);
         } else if let Some(verb) = ShapeVerb::parse(head) {
@@ -1144,6 +1178,7 @@ fn write_effect(write: &Write) -> EffectSignature {
         }
         Write::EdgeAttribute { field, .. } => EffectSignature::EdgeField(field.clone()),
         Write::HyperedgeAttribute { field, .. } => EffectSignature::HyperedgeField(field.clone()),
+        Write::MembershipAttribute { field, .. } => EffectSignature::MembershipField(field.clone()),
     }
 }
 
@@ -1240,7 +1275,7 @@ mod tests {
     use crate::types::EnumRegistry;
     use crate::write_log::{Write, WriteRecord};
     use babylon_graph::substrate::NodeId;
-    use std::collections::{HashMap, HashSet};
+    use std::collections::{BTreeMap, HashMap, HashSet};
 
     fn rule(source: &str) -> SExpr {
         crate::reader::read(source)
@@ -1264,6 +1299,7 @@ mod tests {
                 metrics: HashSet::new(),
             })),
             types: Box::leak(Box::new(TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields: HashMap::new(),
                 exemptions: &[],
             })),
@@ -1624,12 +1660,18 @@ mod tests {
             assert_ne!(attribution.role, RuleRole::Mechanic);
             let expected_evidence = if matches!(
                 allowance.rule_id,
-                "organizer/organizer-practice" | "state-opponent/observe-public-activity"
+                "organizer/organizer-practice"
+                    | "state-opponent/observe-public-activity"
+                    | "welfare/county-review-session"
             ) {
-                if allowance.rule_id == "organizer/organizer-practice" {
-                    assert_eq!(allowance.effect, AllowedEffect::OrganizerPractice);
-                } else {
-                    assert_eq!(allowance.effect, AllowedEffect::CityPdObserve);
+                match allowance.rule_id {
+                    "organizer/organizer-practice" => {
+                        assert_eq!(allowance.effect, AllowedEffect::OrganizerPractice);
+                    }
+                    "state-opponent/observe-public-activity" => {
+                        assert_eq!(allowance.effect, AllowedEffect::CityPdObserve);
+                    }
+                    _ => assert_eq!(allowance.effect, AllowedEffect::CountyReview),
                 }
                 assert_eq!(allowance.role, RuleRole::Intent);
                 EvidenceClass::Designed
@@ -1753,7 +1795,7 @@ mod tests {
 
     #[test]
     fn governed_allowance_rows_carry_the_required_provenance() {
-        assert_eq!(GOVERNED_EFFECT_ALLOWANCES.len(), 8);
+        assert_eq!(GOVERNED_EFFECT_ALLOWANCES.len(), 9);
         for row in GOVERNED_EFFECT_ALLOWANCES {
             assert_ne!(row.reason.len(), 0);
             assert_eq!(row.owner, "Director");
@@ -1763,6 +1805,9 @@ mod tests {
             } else if row.rule_id == "state-opponent/observe-public-activity" {
                 assert_eq!(row.date, "2026-10-29");
                 assert_eq!(row.adr, "ADR291");
+            } else if row.rule_id == "welfare/county-review-session" {
+                assert_eq!(row.date, "2026-11-19");
+                assert_eq!(row.adr, "ADR301");
             } else if row.rule_id.starts_with("struggle/") {
                 assert_eq!(row.date, "2026-09-01");
                 assert_eq!(row.adr, "ADR248");
@@ -1775,13 +1820,20 @@ mod tests {
 
     #[test]
     fn governed_attribution_rows_carry_the_required_provenance() {
-        assert_eq!(GOVERNED_RULE_ATTRIBUTIONS.len(), 74);
+        assert_eq!(GOVERNED_RULE_ATTRIBUTIONS.len(), 75);
         assert_eq!(
             GOVERNED_RULE_ATTRIBUTIONS
                 .iter()
                 .filter(|row| row.role == RuleRole::Mechanic)
                 .count(),
             69
+        );
+        assert_eq!(
+            GOVERNED_RULE_ATTRIBUTIONS
+                .iter()
+                .filter(|row| row.role == RuleRole::Intent)
+                .count(),
+            3
         );
         assert_eq!(
             GOVERNED_RULE_ATTRIBUTIONS
@@ -1805,6 +1857,9 @@ mod tests {
                 }
                 "state-opponent/observe-public-activity" => {
                     (EvidenceClass::Designed, "2026-10-29", "ADR291")
+                }
+                "welfare/county-review-session" => {
+                    (EvidenceClass::Designed, "2026-11-19", "ADR301")
                 }
                 "struggle/spark-mechanic" => (EvidenceClass::Designed, "2026-09-01", "ADR248"),
                 "struggle/spark-recognizer" => (EvidenceClass::Derived, "2026-09-01", "ADR248"),

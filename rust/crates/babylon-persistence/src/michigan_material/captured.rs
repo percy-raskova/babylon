@@ -65,7 +65,7 @@ impl MichiganMaterialCatalog {
     pub(crate) fn captured_sources(&self) -> &[crate::economic_catalog::SourceArtifact] {
         &self.source_inputs
     }
-    pub(super) fn replace_source(&mut self, kind: SourceArtifactKind, bytes: Vec<u8>) {
+    pub(crate) fn replace_source(&mut self, kind: SourceArtifactKind, bytes: Vec<u8>) {
         self.source_inputs.retain(|source| source.kind() != kind);
         self.source_inputs
             .push(crate::economic_catalog::SourceArtifact::capture(

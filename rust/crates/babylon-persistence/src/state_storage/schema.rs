@@ -6,6 +6,10 @@ use super::{StorageError, MAX_BYTES};
 use crate::state_storage::layout;
 
 pub(super) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v7\0";
+/// A register with a county review section.
+const COUNTY_REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v9\0";
+/// The domain of the county review frame.
+const COUNTY_FRAME_DOMAIN: &[u8] = b"babylon.material-world-register.county-review.v1\0";
 const STATE_DOMAIN: &[u8] = babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES;
 const STATE_VERSION: u16 = babylon_material_circuit::MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION;
 #[derive(Clone, Debug)]
@@ -248,6 +252,34 @@ fn offer(c: &mut Cursor<'_>) -> Result<(), StorageError> {
     })?;
     Ok(())
 }
+/// The frames after the City PD's: the company frame in version 8, and in version 9 the company
+/// frame when its domain leads the next frame, then the county review frame.
+fn trailing_frames(register: &mut Cursor<'_>, version: usize) -> Result<(), StorageError> {
+    if version == 7 {
+        return Ok(());
+    }
+    let size = register.number(8)?;
+    let first = register.take(size)?;
+    let company = first.starts_with(babylon_material_circuit::COMPANY_PORTFOLIO_DOMAIN);
+    if version == 8 {
+        return if company {
+            Ok(())
+        } else {
+            Err(StorageError::Framing)
+        };
+    }
+    let county = if company {
+        let size = register.number(8)?;
+        register.take(size)?
+    } else {
+        first
+    };
+    if county.starts_with(COUNTY_FRAME_DOMAIN) {
+        Ok(())
+    } else {
+        Err(StorageError::Framing)
+    }
+}
 pub(super) fn sections(bytes: &[u8]) -> Result<Vec<Section>, StorageError> {
     if bytes.len() > MAX_BYTES {
         return Err(StorageError::Bounds);
@@ -256,7 +288,8 @@ pub(super) fn sections(bytes: &[u8]) -> Result<Vec<Section>, StorageError> {
     let domain = register.take(REGISTER_DOMAIN.len())?;
     let version = register.number(4)?;
     if !((domain == REGISTER_DOMAIN && version == 7)
-        || (domain == b"babylon.material-world-register.v8\0" && version == 8))
+        || (domain == b"babylon.material-world-register.v8\0" && version == 8)
+        || (domain == COUNTY_REGISTER_DOMAIN && version == 9))
     {
         return Err(StorageError::Version);
     }
@@ -314,15 +347,7 @@ pub(super) fn sections(bytes: &[u8]) -> Result<Vec<Section>, StorageError> {
     if !matches!(frame.first(), Some(0 | 1)) || (frame[0] == 0 && frame.len() != 1) {
         return Err(StorageError::Framing);
     }
-    if version == 8 {
-        let size = register.number(8)?;
-        if !register
-            .take(size)?
-            .starts_with(babylon_material_circuit::COMPANY_PORTFOLIO_DOMAIN)
-        {
-            return Err(StorageError::Framing);
-        }
-    }
+    trailing_frames(&mut register, version)?;
     register.done()?;
     parser.sections.push(Section {
         id: 73,
@@ -373,5 +398,60 @@ mod lifecycle_tests {
             sections: Vec::new(),
         };
         assert!(matches!(parser.state(0), Err(StorageError::Version)));
+    }
+}
+
+#[cfg(test)]
+mod trailing_frame_tests {
+    use super::{trailing_frames, Cursor, StorageError, COUNTY_FRAME_DOMAIN};
+
+    fn framed(body: &[u8]) -> Vec<u8> {
+        let mut bytes = u64::try_from(body.len())
+            .expect("a short frame")
+            .to_be_bytes()
+            .to_vec();
+        bytes.extend_from_slice(body);
+        bytes
+    }
+
+    fn company() -> Vec<u8> {
+        framed(
+            &[
+                babylon_material_circuit::COMPANY_PORTFOLIO_DOMAIN,
+                b"decisions",
+            ]
+            .concat(),
+        )
+    }
+
+    fn county() -> Vec<u8> {
+        framed(&[COUNTY_FRAME_DOMAIN, b"config and state"].concat())
+    }
+
+    fn walk(version: usize, bytes: &[u8]) -> Result<(), StorageError> {
+        let mut cursor = Cursor::new(bytes);
+        trailing_frames(&mut cursor, version)?;
+        cursor.done()
+    }
+
+    #[test]
+    fn version_seven_has_no_trailing_frame_and_version_eight_has_the_company_frame() {
+        assert!(walk(7, &[]).is_ok());
+        assert!(walk(7, &company()).is_err());
+        assert!(walk(8, &company()).is_ok());
+        assert!(walk(8, &[]).is_err());
+        assert!(walk(8, &county()).is_err());
+    }
+
+    #[test]
+    fn version_nine_has_the_county_frame_after_an_optional_company_frame() {
+        assert!(walk(9, &county()).is_ok());
+        assert!(walk(9, &[company(), county()].concat()).is_ok());
+        assert!(walk(9, &company()).is_err());
+        assert!(walk(9, &[]).is_err());
+        assert!(walk(9, &[county(), company()].concat()).is_err());
+        assert!(walk(9, &[county(), county()].concat()).is_err());
+        assert!(walk(9, &framed(b"not the county's domain")).is_err());
+        assert!(walk(9, &[county(), vec![0]].concat()).is_err());
     }
 }

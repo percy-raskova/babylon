@@ -248,6 +248,7 @@ fn stable_graph_source_count(source: &StableGraphStateRows) -> Result<usize, Sem
         source.edge_f64().len(),
         source.node_currency().len(),
         source.hyperedge_f64().len(),
+        source.membership_f64().len(),
     ];
     checked_sum(&counts, "stable graph source rows")
 }
@@ -325,6 +326,7 @@ pub(crate) enum StableGraphRowRef<'a> {
     EdgeF64(&'a str, &'a str, &'a str, &'a str, f64),
     NodeCurrency(&'a str, &'a str, i128),
     HyperedgeF64(&'a str, &'a str, f64),
+    MembershipF64(&'a str, &'a str, &'a str, f64),
 }
 
 impl StableGraphRowRef<'_> {
@@ -355,8 +357,33 @@ impl StableGraphRowRef<'_> {
             Self::HyperedgeF64(local_name, qname, value) => {
                 semantic_codec::encode_stable_graph_hyperedge_f64(local_name, qname, value)
             }
+            Self::MembershipF64(hyperedge, member, qname, value) => {
+                semantic_codec::encode_stable_graph_membership_f64(hyperedge, member, qname, value)
+            }
         }
     }
+}
+
+fn push_membership_rows(
+    source: &StableGraphStateRows,
+    encode: &mut impl FnMut(StableGraphRowRef<'_>) -> Result<CommittedTickRow, SemanticCodecError>,
+    rows: &mut Vec<CommittedTickRow>,
+    body_bytes: &mut usize,
+) -> Result<(), SemanticBatchError> {
+    for (hyperedge, member, qname, bits) in source.membership_f64() {
+        push_encoded_row(
+            CommittedTickRowFamily::Graph,
+            rows,
+            body_bytes,
+            encode(StableGraphRowRef::MembershipF64(
+                hyperedge,
+                member,
+                qname,
+                f64::from_bits(*bits),
+            ))?,
+        )?;
+    }
+    Ok(())
 }
 
 pub(crate) fn compose_graph_rows_with_encoder(
@@ -449,6 +476,7 @@ pub(crate) fn compose_graph_rows_with_encoder(
             ))?,
         )?;
     }
+    push_membership_rows(source, encode, &mut rows, &mut body_bytes)?;
     rows.sort_unstable_by(|left, right| left.key().cmp(right.key()));
     Ok((rows, body_bytes))
 }

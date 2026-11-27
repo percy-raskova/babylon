@@ -1,0 +1,219 @@
+ADR325_the_countrys_numbers_before_the_pay_fight:
+  title: The country's numbers before the pay fight; three bands now; public provision outside two sellers' rules
+  date: '2026-11-25'
+  status: accepted
+  issue: PER-371
+  evidence_class: Designed
+  authority:
+    - >-
+        Director, 2026-11-25, in the question dialog, asked what is built
+        after stage 2 of the opening: "The country's numbers (Recommended)".
+    - >-
+        Director, 2026-11-25, same dialog, asked when the bands are built:
+        "Three bands now (Recommended)".
+    - >-
+        Director, 2026-11-25, same dialog, asked what the six rules should do
+        with public providers: "Leave them out (Recommended)".
+    - >-
+        Director, 2026-11-25, typed after the dialog: "what is our end goal
+        here when all this work is done?"
+  context: |
+    A CORRECTION THE LEAD OWED. The option the Director picked on 24 November
+    (ADR324, C1) read: "Then the country's rebuilt opening (17 tasks: the
+    twelve trades' jobs and pay by place from the data, then a national
+    scenario on them)". The 17 tasks are stages 1 and 2 of the opening
+    (ADR313). Stage 2's scenario is a test fixture: twelve trades and observed
+    pay, with the shipped scenario's prices, recipes and taxes. So after the
+    17 tasks the country still does not stand. What makes it stand is stage 5
+    of the opening, the builder that sets recipes, prices, baskets, trade and
+    tax rates from the accounts table. The homes design of 21 November put
+    stage 5 after banks and homes, "so that it is built once". The order of 24
+    November put the pay fight's first part next, "counted on the small world
+    and on the country": on the country that count would have been taken on a
+    collapse. The lead found this on 25 November while stage 2 was building
+    and brought it to the Director as the first question of the dialog.
+
+    WHERE THE BUILD STOOD. The country bench was built and its runs of the
+    shipped opening recorded (`reports/country-bench-2026-11-24/`). Stage 1
+    was built: the jobs basis, the cohort table, the pay table and the
+    accounts table of the twelve trades. Stage 2's Tasks 0 to 6 were built:
+    the twelve trades, schema 8, the compiler `national-world-v13`, and the
+    opening on the scenario's own set of trades. Its Tasks 7, 8 and 8b were
+    in the build.
+
+    THE BANDS. Stage 2's Tasks 9 and 10 split each county's earning households
+    that own no business into a lower-paid half and a better-paid 40%, and
+    deal the county's jobs to the bands by pay, owners first (ADR313, O17).
+    The homes design of 21 November (ADR315) held those two tasks for its own
+    first step, which makes tenant and owner groups in each band. The order of
+    24 November counted them in the opening. So two approved texts disagreed.
+
+    PUBLIC PROVIDERS. The small worlds have no public provider, so no ruling
+    of the six rules covered one. On the country bench, with all six rules
+    (`reports/country-bench-2026-11-24/README.md`): the country has 977 sites
+    of public provision, 976 funded by an operating grant from their public
+    body. From period 3 between 772 and 805 of the funded ones have a resting
+    price. The owner's restart tests 238 of them in period 3 and between 746
+    and 785 in every period after. Every test fails and none is restarted.
+    The one with no grant has its price raised once, from $1.00 to $4.00. The
+    price ruling (ADR312, P12) says public provision does not clear by price.
+  decision: |
+    N1. THE COUNTRY'S NUMBERS ARE BUILT NEXT. In the Director's pick: "Build
+    stage 5 next: a builder that sets recipes, prices, baskets, trade and tax
+    rates from the new accounts table, by the design you approved on 20
+    November as it stands (thin profits before banks, owners' rent left out,
+    the shop as it is). Then the bench shows whether the country stands with
+    the six rules and benefits, which is what the pay fight needs under it.
+    The builder is run again when banks and homes are built. Cost: a plan to
+    write and about twenty tasks before the pay fight (my estimate from the
+    spike's list, not a plan)."
+
+    N2. THREE BANDS NOW. In the Director's pick: "Build the two tasks with the
+    opening. The country bench then shows who holds the better-paid jobs in
+    each place. The homes design's first step later splits each band into
+    tenants and owners. Cost: the household accounts are split twice, so some
+    tests and pinned figures are redone then."
+
+    N3. PUBLIC PROVIDERS ARE LEFT OUT. In the Director's pick: "A public
+    provider runs on its public body's money, not on sales. The resting price,
+    the step-down and the owner's restart skip it. It hires within its grant
+    and is cut when its public body runs short, as the opening's rule on
+    public money already says. The one site with no grant keeps its token
+    price of $1.00. What reopens a closed public provider is then a later
+    design. One engine task."
+
+    THE ORDER OF THE BUILD NOW. Stage 2 of the opening to its end, the bands
+    in it. The engine task of N3. Then stage 5, the country's numbers, counted
+    on the bench at 34 and at 400 periods. Then the pay fight's first part,
+    counted on the small world and on the country. Then the game's own turn
+    carries the rules, so that a campaign runs, saves and shows them.
+
+    WHAT THE BRANCH IS FOR, as the lead answered the Director's question. A
+    player opens a campaign and sees the United States as an economy that
+    runs by itself and that they can fight over. It opens from figures of
+    2024: twelve trades, each workplace paying what its trade pays in its
+    place, three earning bands in every place. It runs for hundreds of
+    periods with swings, closures, layoffs and recoveries. It moves by the
+    rules the Director ruled. Its first decision for the player is the pay
+    fight. All of it is carried by the game's own turn, saved, and shown in
+    the client as approved (ADR317). Banks and credit, homes and rent, and
+    nations drawn over household groups are designed and come after it.
+  amends:
+    - >-
+        ADR324, C2 (the order of the build): stage 5 of the opening follows
+        stage 2 and comes before the pay fight's first part.
+    - >-
+        ADR315 and the homes design of 21 November, section 11, last
+        paragraph ("The opening is rebuilt (stage 5 of ADR313) after this
+        design and ADR314 are built, so that it is built once"): stage 5 is
+        built now by the design of 20 November as it stands, and its builder
+        is run again when banks and homes are built.
+    - >-
+        The same section, item 1 ("with the two held tasks of the twelve
+        trades plan"): the two tasks are built now, with the opening. Item 1
+        keeps the split of each band into tenants and owners.
+    - >-
+        ADR321 (the six rules as measured): the resting price and the owner's
+        restart do not reach a seller of public provision. The step-down is a
+        rule of goods and never reached one.
+    - >-
+        ADR324, C1: its words "then a national scenario on them" are read as
+        this record's context has them. The 17 tasks make the twelve trades
+        and observed pay; the numbers are stage 5.
+  lead_readings_for_the_director_to_check:
+    - >-
+        "As it stands" is the builder spike's variant C of 20 November: every
+        trade's margin is scaled by one solved factor so that owners spend
+        all they receive, which leaves profit near 14% of wages; the rent that
+        home owners are counted as paying themselves is left out (the
+        design's call 6); the shop is as rule O9 has it. The spike's open
+        choices on rent and on moving freight out of the shop are not
+        reopened now. They wait for banks and homes.
+    - >-
+        For the engine a public provider is a seller of a service that the
+        market policy leaves out of its order of paying (ADR312, P12, first
+        case). In the country that is public provision and nothing else, so
+        all 977 sites are covered, the one with no grant among them. Equipment
+        is also outside the order of paying, as a good bought as investment.
+        Its makers are private businesses and stay under every rule.
+    - >-
+        Hiring within means, people who look for work and the stop without
+        pay still reach a public provider. Nothing is built that reopens a
+        closed one.
+    - >-
+        The country's numbers go into a new scenario file that the country
+        bench opens. The shipped scenario keeps every byte and stays playable,
+        because the game's own turn cannot yet play a scenario of schema 8.
+        Making the new one the shipped one belongs to the game's own turn.
+    - >-
+        The business shares stay with the band of owners. How shares are
+        divided between bands is still the Director's to rule.
+  consequences:
+    - >-
+        The pay fight's first part moves about twenty tasks later, and is
+        then counted on a country that has been given the chance to stand.
+    - >-
+        The household accounts are split twice: into three bands now, and by
+        tenure when homes are built. Tests and pinned figures of the first
+        split are redone then.
+    - >-
+        The bench's records of the sets with rules change, in the shipped
+        opening and in the twelve trades. They are recorded again and their
+        readings rewritten. The runs with no rule do not change.
+    - >-
+        The builder is a program. Banks and homes change its inputs and it is
+        run again; the scenario it writes is replaced, not patched.
+  alternatives_rejected:
+    - >-
+        "The pay fight as ordered": its first part next, counted on the small
+        world; its count on the country taken on a country that collapses by
+        itself. Not picked: that count would show that the rules run there,
+        not what they do.
+    - >-
+        "The game's own turn first": the rules and their records into the
+        game's own turn on the small world, the country waiting for its
+        numbers. Not picked.
+    - >-
+        "Bands with tenure now": the homes design's first step pulled
+        forward, one split and nothing redone, about five more tasks and the
+        tenure figures wired in. Not picked.
+    - >-
+        "Hold the bands": stage 2 stops at the twelve trades and observed
+        pay. Not picked.
+    - >-
+        "A public body's own restart": a public body reopens its stopped
+        provider when its money covers the payroll for some periods. Not
+        picked now; it stays a later design.
+    - >-
+        "Keep it as it is": public providers under the business rules. Not
+        picked.
+  open_questions:
+    - >-
+        What reopens a closed public provider. A later design.
+    - >-
+        What a ruined small owner is paid (joins ADR318).
+    - >-
+        How fine the country runs: 187 pooled places today.
+    - >-
+        Whether the country stands on its new numbers with the six rules and
+        benefits. Counted on the bench when stage 5 is built, at 400 periods.
+  verification: |
+    N1: the plan of stage 5 tests the compiled opening before any period
+    runs (each trade's needed jobs against its workers, each private price
+    against its cost, the four balances of ADR313's rule O6, the schema 7
+    bytes unchanged), and the bench records 34 and 400 periods beside a run
+    with no rule. N2: stage 2's Tasks 9 and 10 and the bench's Task 10b. N3:
+    unit tests that a service outside the order of paying neither rests nor
+    is tested for a restart, and that a good outside it still does; every
+    measured small world reproduces byte for byte; the bench's runs with no
+    rule keep their digests.
+  related:
+    - ADR296_national_game_grain
+    - ADR312_the_price_of_a_short_market
+    - ADR313_the_national_economy_opens_in_balance
+    - ADR314_how_the_economy_adjusts
+    - ADR315_homes_rent_and_nation
+    - ADR318_who_carries_a_losing_workplace
+    - ADR321_the_six_rules_as_measured
+    - ADR323_the_pay_fight
+    - ADR324_the_country_before_more_of_the_small_world

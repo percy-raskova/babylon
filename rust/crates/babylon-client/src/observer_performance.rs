@@ -39,6 +39,10 @@ pub(crate) enum RenderMode {
     OrganizerReview,
     OrganizerPractices,
     OrganizerHearing,
+    OrganizerCountyLedger,
+    OrganizerCountyRoster,
+    OrganizerCountySession,
+    OrganizerFoodRun,
 }
 
 impl RenderMode {
@@ -66,6 +70,10 @@ impl RenderMode {
             Self::OrganizerPractices => "organizer-practices",
             Self::OrganizerHearing => "organizer-hearing",
             Self::OrganizerNotes => "organizer-notes",
+            Self::OrganizerCountyLedger => "organizer-county-ledger",
+            Self::OrganizerCountyRoster => "organizer-county-roster",
+            Self::OrganizerCountySession => "organizer-county-session",
+            Self::OrganizerFoodRun => "organizer-food-run",
         }
     }
 }
@@ -225,6 +233,10 @@ fn sample_frames(
                     OrganizerInspector::Practices => RenderMode::OrganizerPractices,
                     OrganizerInspector::Hearing => RenderMode::OrganizerHearing,
                     OrganizerInspector::Notes => RenderMode::OrganizerNotes,
+                    OrganizerInspector::CountyLedger => RenderMode::OrganizerCountyLedger,
+                    OrganizerInspector::CountyRoster => RenderMode::OrganizerCountyRoster,
+                    OrganizerInspector::CountySession => RenderMode::OrganizerCountySession,
+                    OrganizerInspector::FoodRun => RenderMode::OrganizerFoodRun,
                 },
                 (PrimaryView::Map, _) => money
                     .as_deref()

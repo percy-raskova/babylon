@@ -46,6 +46,7 @@ type Pair = (
 fn empty_state() -> Parts {
     (
         MaterialCatalogDefinition {
+            market_clearing: None,
             capacity_policy: CapacitySupply::FiniteSchedule,
             site_logistics_nodes: vec![],
             process_outputs: vec![],
@@ -885,6 +886,7 @@ fn retail_state() -> Parts {
     let (_, mut state) = empty_state();
     let source = crate::test_support::catalog();
     let mut catalog = MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![],
         process_outputs: vec![],
@@ -939,6 +941,7 @@ fn retail_state() -> Parts {
             good_id: inventory.good_id,
             unit_id: inventory.unit_id,
             hours_per_unit: 2,
+            units: 1,
         });
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: demand_principal_id,

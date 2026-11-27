@@ -1,19 +1,58 @@
+use super::cut;
+use super::programs;
 use super::CapitalContributionReceipt;
 use super::DistributionReceipt;
+use super::PublicAllocation;
 use super::PublicBudgetReceipt;
+use super::PublicProgramReceipt;
+use super::PublicSpendingRule;
 use super::Result;
 use super::TaxReceipt;
 use crate::valuation::CostClose;
 use crate::{
-    AccountId, CashTransferPurpose, CircuitAccounting, MaterialCircuitState, MoneyTransferReceipt,
+    AccountId, CashTransferPurpose, CircuitAccounting, MaterialCircuitState, MonetaryBook,
+    MoneyTransferReceipt, PublicAccountId,
 };
 
 use crate::{CompanyDistributionReceipt, MaterialCatalog, MaterialCircuitError};
 use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
 
+/// The period's book, costs and movements while one public account pays.
+struct FundingRun<'a> {
+    period: u64,
+    book: &'a mut MonetaryBook,
+    costs: &'a mut CostClose,
+    movements: &'a mut Vec<MoneyTransferReceipt>,
+}
+/// A claim on a public account: a standing row or a program's due.
+enum Source<'a> {
+    Standing(&'a PublicAllocation),
+    Program(&'a PublicProgramReceipt),
+}
+struct Claim<'a> {
+    rank: u32,
+    recipient: AccountId,
+    /// Standing rows by treatment, then programs by key.
+    order: (u8, u8, &'a str),
+    amount: Currency,
+    source: Source<'a>,
+}
+
+/// Each public account's dues, in the dues' own order, grouped once so that no budget scans them all.
+fn group_by_payer(
+    dues: Vec<(PublicProgramReceipt, Currency)>,
+) -> BTreeMap<PublicAccountId, Vec<(PublicProgramReceipt, Currency)>> {
+    let mut grouped: BTreeMap<_, Vec<_>> = BTreeMap::new();
+    for due in dues {
+        grouped.entry(due.0.public_account).or_default().push(due);
+    }
+    grouped
+}
+
 pub(crate) struct FinancialClose {
     pub public_budgets: Vec<PublicBudgetReceipt>,
+    pub programs: Vec<PublicProgramReceipt>,
     pub taxes: Vec<TaxReceipt>,
     pub distributions: Vec<DistributionReceipt>,
     pub company_distributions: Vec<CompanyDistributionReceipt>,
@@ -27,6 +66,7 @@ impl FinancialClose {
     ) -> Result<Self> {
         let mut result = Self {
             public_budgets: vec![],
+            programs: vec![],
             taxes: vec![],
             distributions: vec![],
             company_distributions: vec![],
@@ -92,44 +132,148 @@ impl FinancialClose {
         costs: &mut CostClose,
         movements: &mut Vec<MoneyTransferReceipt>,
     ) -> Result<()> {
+        // What the programs owe is read from the state as the period opens, before any payment.
+        let dues = match &state.accounting {
+            CircuitAccounting::Monetary(e) => programs::program_dues(state, &e.financial.programs)?,
+            CircuitAccounting::PhysicalControl => return Ok(()),
+        };
+        let period = state.period;
+        let dues_of = group_by_payer(dues);
         let CircuitAccounting::Monetary(e) = &mut state.accounting else {
             return Ok(());
         };
-        let mut budgets = BTreeMap::new();
-        for r in &e.financial.public_budgets {
-            let cash = e.book.cash(AccountId::Public(r.public_account))?;
-            budgets.insert(
-                r.public_account,
-                r.period_cap.min(super::available(cash, r.cash_floor)?),
-            );
-        }
-        for r in &e.financial.public_allocations {
-            let remaining = budgets
-                .get_mut(&r.public_account)
-                .ok_or(MaterialCircuitError::FinancialInvariant)?;
-            let paid = r.amount_per_period.min(*remaining);
-            *remaining = super::sub(*remaining, paid)?;
-            if paid > super::zero() {
-                let sender = AccountId::Public(r.public_account);
-                movements.push(e.book.transfer_cash(
-                    sender,
-                    r.recipient,
-                    paid,
-                    CashTransferPurpose::PublicTransfer,
-                )?);
-                costs.public_transfer(sender, r.recipient, paid)?;
+        // Allocations are sorted by account, so each account's rows are contiguous and keep that order.
+        let allocations = &e.financial.public_allocations;
+        for budget in &e.financial.public_budgets {
+            let account = budget.public_account;
+            let cash = e.book.cash(AccountId::Public(account))?;
+            let free = super::available(cash, budget.cash_floor)?;
+            let start = allocations.partition_point(|r| r.public_account < account);
+            let end = allocations.partition_point(|r| r.public_account <= account);
+            let rows = &allocations[start..end];
+            let mut run = FundingRun {
+                period,
+                book: &mut e.book,
+                costs: &mut *costs,
+                movements: &mut *movements,
+            };
+            match budget.rule {
+                PublicSpendingRule::CappedInOrder => {
+                    self.fund_capped(&mut run, rows, budget.period_cap.min(free))?;
+                }
+                PublicSpendingRule::CashInProportion => {
+                    let owed = dues_of.get(&account).map_or(&[][..], Vec::as_slice);
+                    self.fund_in_proportion(&mut run, rows, owed, free)?;
+                }
             }
-            self.public_budgets.push(PublicBudgetReceipt {
-                period: state.period,
-                public_account: r.public_account,
-                recipient: r.recipient,
-                treatment: r.treatment,
-                priority: r.priority,
-                requested: r.amount_per_period,
-                paid,
-                unfunded: super::sub(r.amount_per_period, paid)?,
-            });
         }
+        self.programs
+            .sort_by(|a, b| (&a.program, a.recipient).cmp(&(&b.program, b.recipient)));
+        Ok(())
+    }
+    /// Today's loop: the rows in their order, each paid what is left of the cap and the free cash.
+    fn fund_capped(
+        &mut self,
+        run: &mut FundingRun<'_>,
+        rows: &[PublicAllocation],
+        mut remaining: Currency,
+    ) -> Result<()> {
+        for r in rows {
+            let amount = r.amount_per_period.min(remaining);
+            remaining = super::sub(remaining, amount)?;
+            self.pay_public(run, r, amount)?;
+        }
+        Ok(())
+    }
+    /// Standing rows and programs of one account, ranked together and cut in proportion.
+    fn fund_in_proportion(
+        &mut self,
+        run: &mut FundingRun<'_>,
+        rows: &[PublicAllocation],
+        owed: &[(PublicProgramReceipt, Currency)],
+        free: Currency,
+    ) -> Result<()> {
+        let mut claims: Vec<Claim<'_>> = rows
+            .iter()
+            .map(|r| Claim {
+                rank: r.priority,
+                recipient: r.recipient,
+                order: (0, r.treatment as u8, ""),
+                amount: r.amount_per_period,
+                source: Source::Standing(r),
+            })
+            .collect();
+        claims.extend(owed.iter().map(|(receipt, amount)| Claim {
+            rank: receipt.rank,
+            recipient: AccountId::Household(receipt.recipient),
+            order: (1, 0, receipt.program.as_str()),
+            amount: *amount,
+            source: Source::Program(receipt),
+        }));
+        claims.sort_by(|a, b| (a.rank, a.recipient, a.order).cmp(&(b.rank, b.recipient, b.order)));
+        let ranked: Vec<_> = claims.iter().map(|c| (c.rank, c.amount)).collect();
+        let paid = cut::cut_in_proportion(free, &ranked)?;
+        for (claim, amount) in claims.iter().zip(paid) {
+            match claim.source {
+                Source::Standing(r) => self.pay_public(run, r, amount)?,
+                Source::Program(receipt) => self.pay_program(run, receipt, amount)?,
+            }
+        }
+        Ok(())
+    }
+    fn pay_program(
+        &mut self,
+        run: &mut FundingRun<'_>,
+        due: &PublicProgramReceipt,
+        paid: Currency,
+    ) -> Result<()> {
+        if paid > super::zero() {
+            let sender = AccountId::Public(due.public_account);
+            // A program's recipient is a household principal, so the account is always a household's.
+            let recipient = AccountId::Household(due.recipient);
+            run.movements.push(run.book.transfer_cash(
+                sender,
+                recipient,
+                paid,
+                CashTransferPurpose::PublicTransfer,
+            )?);
+            run.costs.public_transfer(sender, recipient, paid)?;
+        }
+        let receipt = PublicProgramReceipt {
+            paid,
+            unfunded: super::sub(due.due, paid)?,
+            ..due.clone()
+        };
+        receipt.validate()?;
+        self.programs.push(receipt);
+        Ok(())
+    }
+    fn pay_public(
+        &mut self,
+        run: &mut FundingRun<'_>,
+        r: &PublicAllocation,
+        paid: Currency,
+    ) -> Result<()> {
+        if paid > super::zero() {
+            let sender = AccountId::Public(r.public_account);
+            run.movements.push(run.book.transfer_cash(
+                sender,
+                r.recipient,
+                paid,
+                CashTransferPurpose::PublicTransfer,
+            )?);
+            run.costs.public_transfer(sender, r.recipient, paid)?;
+        }
+        self.public_budgets.push(PublicBudgetReceipt {
+            period: run.period,
+            public_account: r.public_account,
+            recipient: r.recipient,
+            treatment: r.treatment,
+            priority: r.priority,
+            requested: r.amount_per_period,
+            paid,
+            unfunded: super::sub(r.amount_per_period, paid)?,
+        });
         Ok(())
     }
     pub(crate) fn collect_taxes(
@@ -141,29 +285,31 @@ impl FinancialClose {
         let CircuitAccounting::Monetary(e) = &mut state.accounting else {
             return Ok(());
         };
-        // All bases and free cash are observed before any current tax credits.
-        let assessments = e
-            .financial
-            .taxes
-            .iter()
-            .map(|r| {
-                let taxable_amount = costs.tax_base(r.payer, r.basis)?;
-                let assessed = super::fraction(taxable_amount, u64::from(r.rate_bps), 10_000)?;
-                let collected =
-                    assessed.min(super::available(e.book.cash(r.payer)?, r.cash_floor)?);
-                Ok(TaxReceipt {
-                    period: state.period,
-                    payer: r.payer,
-                    public_recipient: r.public_recipient,
-                    basis: r.basis,
-                    rate_bps: r.rate_bps,
-                    taxable_amount,
-                    assessed,
-                    collected,
-                    uncollected: super::sub(assessed, collected)?,
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
+        // All bases and free cash are observed before any current tax credits. A payer's rows
+        // collect in key order from one running balance, so nothing is overdrawn.
+        let mut balances = BTreeMap::new();
+        let mut assessments = Vec::with_capacity(e.financial.taxes.len());
+        for r in &e.financial.taxes {
+            let taxable_amount = costs.tax_base(r.payer, r.basis)?;
+            let assessed = super::fraction(taxable_amount, u64::from(r.rate_bps), 10_000)?;
+            let balance = match balances.get(&r.payer) {
+                Some(balance) => *balance,
+                None => e.book.cash(r.payer)?,
+            };
+            let collected = assessed.min(super::available(balance, r.cash_floor)?);
+            balances.insert(r.payer, super::sub(balance, collected)?);
+            assessments.push(TaxReceipt {
+                period: state.period,
+                payer: r.payer,
+                public_recipient: r.public_recipient,
+                basis: r.basis,
+                rate_bps: r.rate_bps,
+                taxable_amount,
+                assessed,
+                collected,
+                uncollected: super::sub(assessed, collected)?,
+            });
+        }
         for r in assessments {
             if r.collected > super::zero() {
                 let recipient = AccountId::Public(r.public_recipient);
@@ -254,5 +400,54 @@ impl FinancialClose {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::group_by_payer;
+    use crate::{FinalDemandPrincipalId, PublicAccountId, PublicProgramKey, PublicProgramReceipt};
+    use babylon_kernel::currency::Currency;
+
+    fn due(account: u16, recipient: u16) -> (PublicProgramReceipt, Currency) {
+        let id = |n: u16| {
+            let mut bytes = [0_u8; 32];
+            bytes[..2].copy_from_slice(&n.to_be_bytes());
+            bytes
+        };
+        let amount = Currency::from_micro_units(5);
+        (
+            PublicProgramReceipt {
+                period: 1,
+                public_account: PublicAccountId::from_bytes(id(account)),
+                program: PublicProgramKey::new("p").expect("a key"),
+                recipient: FinalDemandPrincipalId::from_bytes(id(recipient)),
+                rank: 0,
+                covered_persons: 1,
+                due: amount,
+                paid: Currency::from_micro_units(0),
+                unfunded: amount,
+            },
+            amount,
+        )
+    }
+
+    /// Two thousand budgets with two thousand dues: grouped in one pass, each keeping its order. It
+    /// is there to catch a return of a scan of every due for each budget, not to time it.
+    #[test]
+    fn two_thousand_budgets_group_their_dues_in_order() {
+        let dues: Vec<_> = (0..2_000_u16)
+            .flat_map(|n| [due(n, n), due(n, n.wrapping_add(1))])
+            .collect();
+        let grouped = group_by_payer(dues.clone());
+        assert_eq!(grouped.len(), 2_000);
+        for (account, rows) in &grouped {
+            let expected: Vec<_> = dues
+                .iter()
+                .filter(|d| d.0.public_account == *account)
+                .cloned()
+                .collect();
+            assert_eq!(rows, &expected);
+        }
     }
 }

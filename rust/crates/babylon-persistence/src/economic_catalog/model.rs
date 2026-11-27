@@ -10,6 +10,7 @@ use babylon_material_circuit::CompanyPayoutPolicy;
 use babylon_material_circuit::CompanyPortfolioPolicy;
 use babylon_material_circuit::HouseholdTimePolicy;
 use babylon_practice_contract::CityPdConfig;
+use babylon_practice_contract::CountyReviewConfig;
 
 use babylon_graph::stable_element::StableElementKey;
 use babylon_kernel::currency::Currency;
@@ -33,6 +34,7 @@ use babylon_material_circuit::FinalDemandPrincipal;
 use babylon_material_circuit::FinancialInstitutions;
 use babylon_material_circuit::HouseholdKind;
 use babylon_material_circuit::MaintenanceBinding;
+use babylon_material_circuit::MarketClearingPolicy;
 use babylon_material_circuit::OrderRow;
 use babylon_material_circuit::RollingProcessSupply;
 use babylon_material_circuit::StaffingMemberBinding;
@@ -118,6 +120,8 @@ pub struct HandlingRequirement {
     pub good_id: GoodId,
     pub unit_id: UnitId,
     pub hours_per_unit: u64,
+    /// The units that `hours_per_unit` hours handle; 1 under policy schema 7 and earlier.
+    pub units: u64,
 }
 
 /// Circulation role; its capacity principal is supplied in the shared capacity table.
@@ -283,6 +287,8 @@ pub struct EconomicOpening {
     pub logistics: CatalogLogistics,
     pub orders: CatalogOpeningOrders,
     pub maintenance: Option<CatalogMaintenance>,
+    /// The products that clear by price. Never encoded: the national opening sets it from its policy.
+    pub market_clearing: Option<MarketClearingPolicy>,
 }
 
 /// Fixed geographic coverage, separate from mutable economic stocks.
@@ -308,6 +314,9 @@ pub struct EconomicCatalogInput {
     pub organizer: Option<OrganizerConfig>,
     /// The captured national opponent and its independent authority.
     pub city_pd: Option<CityPdConfig>,
+    /// The captured county review, carried only by the compiler that frames it. The roster it
+    /// opens with is regenerated from the opening, never encoded.
+    pub county_review: Option<CountyReviewConfig>,
 }
 
 /// Captured user-facing commodity identity; labels never come from guessing a hash.

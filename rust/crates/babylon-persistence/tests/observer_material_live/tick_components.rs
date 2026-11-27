@@ -21,7 +21,7 @@ use std::fmt::Write as _;
 use std::time::Instant;
 use uuid::Uuid;
 
-const RELATIONS: [(&str, &str); 24] = [
+const RELATIONS: [(&str, &str); 25] = [
     ("graph_node_v1", "public.v_observer_graph_node_v1"),
     ("graph_node_f64_v1", "public.v_observer_graph_node_f64_v1"),
     ("graph_edge_v1", "public.v_observer_graph_edge_v1"),
@@ -38,6 +38,10 @@ const RELATIONS: [(&str, &str); 24] = [
     (
         "graph_hyperedge_f64_v1",
         "public.v_observer_graph_hyperedge_f64_v1",
+    ),
+    (
+        "graph_hyperedge_member_f64_v1",
+        "public.v_observer_graph_hyperedge_member_f64_v1",
     ),
     ("world_register_v1", "public.v_observer_world_register_v1"),
     ("hex_state_delta_v1", "public.v_observer_hex_state_delta_v1"),
@@ -796,7 +800,7 @@ fn graph_vectors_reuse_exact_memberships_and_preserve_history() {
 
 #[test]
 #[ignore = "requires the disposable PostgreSQL harness; independent clone ownership"]
-fn graph_reads_resolve_exact_ids_with_prior_campaign_statistics() {
+fn graph_reads_resolve_exact_ids_at_a_period_its_statistics_have_not_seen() {
     let mut target = DisposableTarget::create();
     let create = |id, preset| {
         DurableMaterialRuntime::create(
@@ -810,23 +814,26 @@ fn graph_reads_resolve_exact_ids_with_prior_campaign_statistics() {
     };
     let mut original = create(343_101, MichiganDeliveryPreset::Standard);
     support::advance_material_period(&mut original);
+    // The commit of a campaign's first period refreshes the statistics of the
+    // graph tables itself (PER-364). The fresh campaign commits period 1 through
+    // the product, so the statistics are the first publication's.
+    let mut fresh = create(343_102, MichiganDeliveryPreset::Delayed);
+    support::advance_material_period(&mut fresh);
     let mut writer = target
         .writer
         .connect(NoTls)
         .expect("the test database accepts the connection");
-    writer
-        .batch_execute(
-            "ANALYZE babylon_state.graph_node_lookup_v1, babylon_state.graph_string_lookup_v1",
-        )
-        .expect("the test database applies the schema statements");
-    // Keep the prior campaign's statistics stable while creating a new one.
-    // This test-owned lock allows inserts and reads, but excludes background
-    // ANALYZE. It changes no schema, grants, data, or production planner setting.
+    // Hold the first publication's statistics stable while period 2 commits.
+    // This test-owned lock allows inserts and reads, but excludes any later
+    // ANALYZE, background or not. It is taken after the product's refresh,
+    // which needs the same lock mode. It changes no schema, grants, data, or
+    // production planner setting.
     let mut statistics_guard = writer
         .transaction()
         .expect("the test database opens a transaction");
     statistics_guard.batch_execute("SET LOCAL lock_timeout='5s'; LOCK TABLE babylon_state.graph_node_lookup_v1, babylon_state.graph_string_lookup_v1, babylon_state.graph_node_vector_v1, babylon_state.graph_node_chunk_v1, babylon_state.tick_commit IN SHARE UPDATE EXCLUSIVE MODE").expect("the test database applies the schema statements");
-    let mut fresh = create(343_102, MichiganDeliveryPreset::Delayed);
+    // The product refreshes at period 1 only: period 2 is a period these
+    // statistics have never seen.
     support::advance_material_period(&mut fresh);
     let expected = fresh
         .session()
@@ -848,13 +855,13 @@ fn graph_reads_resolve_exact_ids_with_prior_campaign_statistics() {
     read.batch_execute("SET LOCAL statement_timeout='5s'; SET LOCAL idle_in_transaction_session_timeout='5s'; SET LOCAL jit=off; SET LOCAL search_path=pg_catalog").expect("the test database applies the schema statements");
     let campaign = fresh.campaign_id();
     let began = Instant::now();
-    let nodes: Vec<(String, String)> = read.query("SELECT local_name,node_type FROM public.v_observer_graph_node_v1 WHERE campaign_id=$1::uuid AND resolve_tick=1 ORDER BY local_name", &[campaign.as_uuid()]).expect("the seeded rows are readable").into_iter().map(|row| (row.get(0), row.get(1))).collect();
+    let nodes: Vec<(String, String)> = read.query("SELECT local_name,node_type FROM public.v_observer_graph_node_v1 WHERE campaign_id=$1::uuid AND resolve_tick=2 ORDER BY local_name", &[campaign.as_uuid()]).expect("the seeded rows are readable").into_iter().map(|row| (row.get(0), row.get(1))).collect();
     assert_eq!(nodes, expected.rows().nodes());
     let nodes_elapsed = began.elapsed();
     let began = Instant::now();
-    let attributes: Vec<(String, String, u64)> = read.query("SELECT local_name,qname,value_bits FROM public.v_observer_graph_node_f64_v1 WHERE campaign_id=$1::uuid AND resolve_tick=1 ORDER BY local_name,qname", &[campaign.as_uuid()]).expect("the seeded rows are readable").into_iter().map(|row| (row.get(0), row.get(1), u64::from_ne_bytes(row.get::<_, i64>(2).to_ne_bytes()))).collect();
+    let attributes: Vec<(String, String, u64)> = read.query("SELECT local_name,qname,value_bits FROM public.v_observer_graph_node_f64_v1 WHERE campaign_id=$1::uuid AND resolve_tick=2 ORDER BY local_name,qname", &[campaign.as_uuid()]).expect("the seeded rows are readable").into_iter().map(|row| (row.get(0), row.get(1), u64::from_ne_bytes(row.get::<_, i64>(2).to_ne_bytes()))).collect();
     assert_eq!(attributes, expected.rows().node_f64());
-    eprintln!("exact graph lookup stale-statistics control: nodes={} node_read_ms={} attributes={} attribute_read_ms={}", nodes.len(), nodes_elapsed.as_millis(), attributes.len(), began.elapsed().as_millis());
+    eprintln!("exact graph lookup first-publication statistics: nodes={} node_read_ms={} attributes={} attribute_read_ms={}", nodes.len(), nodes_elapsed.as_millis(), attributes.len(), began.elapsed().as_millis());
     read.commit().expect("the fixture transaction commits");
     statistics_guard
         .rollback()

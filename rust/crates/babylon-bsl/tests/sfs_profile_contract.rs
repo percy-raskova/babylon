@@ -26,7 +26,7 @@ use babylon_graph::memory::MemoryGraph;
 use babylon_kernel::content_digest;
 
 use babylon_bsl::types::EnumRegistry;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::Read;
@@ -51,7 +51,7 @@ const FORBIDDEN_INTRINSIC_HEX: &str =
 const FORBIDDEN_MANIFEST_HEX: &str =
     "e3e7d0c90b7302c441005a4cb482a1aff86c2e9178b06a514b2f9c6304aeca74";
 const AUDIT_SOURCE_MANIFEST_HEX: &str =
-    "04aaddb43ad157acb220e895aa02b0d44ddb557b9ee0ec45a39bbc85130b771e";
+    "54fc809a4f23fbbf954df016b6b68c576b678f4d32db743c16dfecd489ea90f6";
 static READER_SCRATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
 const FIXTURE_DECLARATIONS: &str = r"(scenario synthetic-source/declarations
   (defvocabulary NodeType (SYNTHETIC_SOURCE ORGANIZATION))
@@ -218,6 +218,7 @@ fn assert_allowed_fixture_loads_through_declaration_and_type_gates() {
     let mut type_fields = declared.fields;
     type_fields.insert("synthetic-link/strength".to_owned(), strength.decl.clone());
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: type_fields,
         exemptions: &[],
     };

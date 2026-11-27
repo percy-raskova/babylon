@@ -29,19 +29,27 @@ pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circui
 
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    97, 180, 53, 44, 100, 187, 213, 124, 213, 50, 183, 69, 43, 222, 178, 30, 146, 13, 7, 174, 190,
-    57, 25, 174, 148, 171, 56, 71, 193, 222, 75, 248,
+    53, 134, 132, 204, 18, 118, 228, 113, 197, 128, 88, 194, 7, 9, 153, 148, 119, 94, 91, 183, 123,
+    98, 109, 71, 172, 19, 134, 220, 151, 37, 137, 181,
 ];
 
 /// Published schema version of one canonical material-circuit state frame.
 pub const MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION: u16 = 22;
 /// The enabled lifecycle adds an authenticated resident-time extension.
 pub const MATERIAL_CIRCUIT_LIFECYCLE_STATE_SCHEMA_VERSION: u16 = 24;
+/// Without a lifecycle book; with the tail of the financial rows (a budget in proportion).
+pub const MATERIAL_CIRCUIT_PUBLIC_PROGRAMS_STATE_SCHEMA_VERSION: u16 = 25;
+/// With a lifecycle book and with the tail of the financial rows.
+pub const MATERIAL_CIRCUIT_LIFECYCLE_PUBLIC_PROGRAMS_STATE_SCHEMA_VERSION: u16 = 26;
 fn state_version(state: &MaterialCircuitState) -> u16 {
-    if state.household_lifecycle().is_some() {
-        MATERIAL_CIRCUIT_LIFECYCLE_STATE_SCHEMA_VERSION
-    } else {
-        SCHEMA_VERSION
+    match (
+        state.household_lifecycle().is_some(),
+        state.has_public_program_extension(),
+    ) {
+        (false, false) => SCHEMA_VERSION,
+        (true, false) => MATERIAL_CIRCUIT_LIFECYCLE_STATE_SCHEMA_VERSION,
+        (false, true) => MATERIAL_CIRCUIT_PUBLIC_PROGRAMS_STATE_SCHEMA_VERSION,
+        (true, true) => MATERIAL_CIRCUIT_LIFECYCLE_PUBLIC_PROGRAMS_STATE_SCHEMA_VERSION,
     }
 }
 
@@ -81,13 +89,27 @@ pub(crate) fn append_bounded_rows<T>(
     limit: usize,
     mut append: impl FnMut(&mut Vec<u8>, &T),
 ) -> Result<(), MaterialCircuitError> {
+    try_append_bounded_rows(output, rows, limit, |b, r| {
+        append(b, r);
+        Ok(())
+    })
+}
+
+/// `append_bounded_rows` for a row whose own fields can exceed their wire width: the row's error
+/// stops the encoding.
+pub(crate) fn try_append_bounded_rows<T>(
+    output: &mut Vec<u8>,
+    rows: &[T],
+    limit: usize,
+    mut append: impl FnMut(&mut Vec<u8>, &T) -> Result<(), MaterialCircuitError>,
+) -> Result<(), MaterialCircuitError> {
     if rows.len() > limit {
         return Err(MaterialCircuitError::WireLimit);
     }
     let count = u32::try_from(rows.len()).map_err(|_| MaterialCircuitError::WireLimit)?;
     output.extend_from_slice(&count.to_be_bytes());
     for row in rows {
-        append(output, row);
+        append(output, row)?;
     }
     Ok(())
 }
@@ -625,7 +647,10 @@ pub fn decode_material_circuit_state_for_encoding(
     let version = cursor.u16()?;
     if !matches!(
         version,
-        SCHEMA_VERSION | MATERIAL_CIRCUIT_LIFECYCLE_STATE_SCHEMA_VERSION
+        SCHEMA_VERSION
+            | MATERIAL_CIRCUIT_LIFECYCLE_STATE_SCHEMA_VERSION
+            | MATERIAL_CIRCUIT_PUBLIC_PROGRAMS_STATE_SCHEMA_VERSION
+            | MATERIAL_CIRCUIT_LIFECYCLE_PUBLIC_PROGRAMS_STATE_SCHEMA_VERSION
     ) {
         return Err(MaterialCircuitError::WireVersion);
     }
@@ -648,7 +673,14 @@ pub fn decode_material_circuit_state_for_encoding(
         final_demand_orders: decode_final_demand_orders(&mut cursor)?,
         maintenance_service: decode_maintenance_service(&mut cursor)?,
         capacity_reservations: capacity::decode(&mut cursor)?,
-        accounting: accounting::decode(&mut cursor)?,
+        accounting: accounting::decode(
+            &mut cursor,
+            matches!(
+                version,
+                MATERIAL_CIRCUIT_PUBLIC_PROGRAMS_STATE_SCHEMA_VERSION
+                    | MATERIAL_CIRCUIT_LIFECYCLE_PUBLIC_PROGRAMS_STATE_SCHEMA_VERSION
+            ),
+        )?,
     };
     cursor.finish()?;
     if state_version(&state) != version {

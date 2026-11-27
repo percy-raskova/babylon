@@ -795,6 +795,7 @@ fn run_tick_with_observer(
         RuleExecution::OrganizerProducts => Some("organizer-products"),
         RuleExecution::OrganizerPractice => Some("organizer-practice"),
         RuleExecution::CityPdObserve => Some("city-pd-observe"),
+        RuleExecution::CountyReview => Some("county-review"),
     };
     if let Some(operation) = native_operation {
         return Err(err(format!(
@@ -1439,8 +1440,8 @@ mod tests {
     use babylon_kernel::replay::ReplaySeed;
     use babylon_kernel::replay::ReplaySessionId;
     use babylon_kernel::replay::RngSeedContext;
-    use std::collections::HashMap;
     use std::collections::HashSet;
+    use std::collections::{BTreeMap, HashMap};
 
     /// Explicit deterministic identity for these sealed fixtures.
     fn test_session() -> ReplaySessionId {
@@ -1663,6 +1664,7 @@ mod tests {
             edge_ceilings: std::collections::HashMap<String, u64>,
         ) -> Self {
             let types = crate::typecheck::TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields,
                 exemptions: &[],
             };
@@ -2233,6 +2235,7 @@ mod tests {
         let stranger = EnumRegistry::default();
 
         let types = crate::typecheck::TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([(
                 "organization/kind".to_owned(),
                 FieldDecl {

@@ -127,6 +127,7 @@ fn process() -> ProcessId {
 )]
 fn opening() -> (MaterialCatalog, MaterialCircuitState) {
     let catalog = MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: (1..=2)
             .map(|id| SiteLogisticsNode {
@@ -250,6 +251,7 @@ fn opening() -> (MaterialCatalog, MaterialCircuitState) {
 fn config() -> OrganizerConfig {
     OrganizerConfig {
         hearing: None,
+        review: None,
         aid_bindings: vec![],
         schema_version: ORGANIZER_SCHEMA_VERSION,
         collection: None,

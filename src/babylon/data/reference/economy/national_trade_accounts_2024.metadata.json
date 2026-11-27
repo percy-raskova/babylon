@@ -1,0 +1,337 @@
+{
+  "artifact": {
+    "block_order": [
+      "use",
+      "supply",
+      "make",
+      "industry",
+      "jobs",
+      "split"
+    ],
+    "block_rows": {
+      "industry": 78,
+      "jobs": 48,
+      "make": 195,
+      "split": 10,
+      "supply": 120,
+      "use": 360
+    },
+    "bytes": 6470,
+    "columns": [
+      "block",
+      "row_key",
+      "column_key",
+      "unit",
+      "value"
+    ],
+    "columns_of_blocks": {
+      "industry": [
+        "gross_output",
+        "intermediate_inputs",
+        "compensation",
+        "production_taxes_less_subsidies",
+        "gross_operating_surplus",
+        "value_added_basic"
+      ],
+      "jobs": [
+        "jobs",
+        "annual_payroll_usd",
+        "jobs_public",
+        "annual_payroll_public_usd"
+      ],
+      "make": [
+        "food",
+        "extraction",
+        "energy_utilities",
+        "manufacturing",
+        "consumer_goods",
+        "capital_goods",
+        "construction_housing",
+        "distribution_transport",
+        "household_services",
+        "leisure_hospitality",
+        "business_services",
+        "public_provisioning",
+        "owner_occupied_housing",
+        "scrap_used",
+        "noncomparable"
+      ],
+      "split": {
+        "113FF": [
+          "extraction",
+          "food"
+        ],
+        "311FT": [
+          "food",
+          "manufacturing"
+        ],
+        "313TT": [
+          "manufacturing",
+          "consumer_goods"
+        ],
+        "334": [
+          "consumer_goods",
+          "capital_goods"
+        ],
+        "335": [
+          "consumer_goods",
+          "capital_goods"
+        ]
+      },
+      "supply": [
+        "commodity_output",
+        "imports",
+        "trade_margins",
+        "transport_margins",
+        "import_duties",
+        "product_taxes",
+        "product_subsidies",
+        "total_supply"
+      ],
+      "use": [
+        "food",
+        "extraction",
+        "energy_utilities",
+        "manufacturing",
+        "consumer_goods",
+        "capital_goods",
+        "construction_housing",
+        "distribution_transport",
+        "household_services",
+        "leisure_hospitality",
+        "business_services",
+        "public_provisioning",
+        "owner_occupied_housing",
+        "households",
+        "investment_structures",
+        "investment_equipment",
+        "investment_intellectual_property",
+        "investment_residential",
+        "inventories",
+        "exports",
+        "federal_consumption",
+        "federal_investment",
+        "state_local_consumption",
+        "state_local_investment"
+      ]
+    },
+    "decoded_bytes": 48027,
+    "format": "csv.gz",
+    "ordering": "blocks in the order of block_order, each dense in the order of its row and column lists",
+    "path": "src/babylon/data/reference/economy/national_trade_accounts_2024.csv.gz",
+    "rows": 811,
+    "rows_of_blocks": {
+      "industry": [
+        "food",
+        "extraction",
+        "energy_utilities",
+        "manufacturing",
+        "consumer_goods",
+        "capital_goods",
+        "construction_housing",
+        "distribution_transport",
+        "household_services",
+        "leisure_hospitality",
+        "business_services",
+        "public_provisioning",
+        "owner_occupied_housing"
+      ],
+      "jobs": [
+        "food",
+        "extraction",
+        "energy_utilities",
+        "manufacturing",
+        "consumer_goods",
+        "capital_goods",
+        "construction_housing",
+        "distribution_transport",
+        "household_services",
+        "leisure_hospitality",
+        "business_services",
+        "public_provisioning"
+      ],
+      "make": [
+        "food",
+        "extraction",
+        "energy_utilities",
+        "manufacturing",
+        "consumer_goods",
+        "capital_goods",
+        "construction_housing",
+        "distribution_transport",
+        "household_services",
+        "leisure_hospitality",
+        "business_services",
+        "public_provisioning",
+        "owner_occupied_housing"
+      ],
+      "split": [
+        "113FF",
+        "311FT",
+        "313TT",
+        "334",
+        "335"
+      ],
+      "supply": [
+        "food",
+        "extraction",
+        "energy_utilities",
+        "manufacturing",
+        "consumer_goods",
+        "capital_goods",
+        "construction_housing",
+        "distribution_transport",
+        "household_services",
+        "leisure_hospitality",
+        "business_services",
+        "public_provisioning",
+        "owner_occupied_housing",
+        "scrap_used",
+        "noncomparable"
+      ],
+      "use": [
+        "food",
+        "extraction",
+        "energy_utilities",
+        "manufacturing",
+        "consumer_goods",
+        "capital_goods",
+        "construction_housing",
+        "distribution_transport",
+        "household_services",
+        "leisure_hospitality",
+        "business_services",
+        "public_provisioning",
+        "owner_occupied_housing",
+        "scrap_used",
+        "noncomparable"
+      ]
+    },
+    "sha256": "398d48d346a5676413823559a6244c34faa34a5e050f34262872c4c8e0e503b3",
+    "writer": {
+      "encoding": "ascii",
+      "gzip_level": 9,
+      "line_end": "\\n",
+      "mtime": 0
+    }
+  },
+  "check_bound_usd_millions": 10,
+  "checks": {
+    "industry_output": 1,
+    "make_column": 4,
+    "make_row": 4,
+    "make_use_output": 0,
+    "supply_parts": 2,
+    "use_column": 8,
+    "use_row": 6,
+    "use_supply": 1,
+    "use_total": 2,
+    "value_added": 1
+  },
+  "contract": "NationalTradeAccounts2024V1",
+  "coverage": {
+    "block_rows": {
+      "industry": 78,
+      "jobs": 48,
+      "make": 195,
+      "split": 10,
+      "supply": 120,
+      "use": 360
+    },
+    "jobs_in_all": 154736293,
+    "rows_in_all": 811
+  },
+  "gdp": {
+    "final_uses_usd_millions": 32979552,
+    "gap_usd_millions": -2,
+    "imports_usd_millions": 3681542,
+    "value_added_by_product_usd_millions": 29298012
+  },
+  "housing": {
+    "owner_2017_summary_vs_detail_gaps_usd_millions": {
+      "F010": 0,
+      "T005": 1,
+      "T00OTOP": 0,
+      "V001": 0,
+      "V003": 0
+    },
+    "owner_intermediate_gap_usd_thousands": -892,
+    "owner_make_less_gross_output_usd_thousands": 5702525
+  },
+  "issue": "PER-371",
+  "native_readers": [],
+  "regeneration": "UV_PROJECT_ENVIRONMENT=.venv mise exec -- uv run --frozen python tools/make_national_trade_accounts.py --source-root /media/user/data/babylon-data",
+  "runtime_consumers": [],
+  "semantics": {
+    "blocks": "use: product rows by industry and final-use columns. supply: product rows by supply column. make: what each industry makes of each product. industry: output, inputs and value added by industry. jobs: national published QCEW jobs and payroll by trade. split: the jobs that share each split industry.",
+    "government": "General government and government enterprises are public provisioning. Federal (F06, F07) and state and local (F10) final uses stay apart by level.",
+    "housing": "Owner-occupied housing is cut from BEA industry and product HS with the 2017 detail shares of the mapping contract (rent that home owners are counted as paying themselves). The owner's intermediate inputs are HS's total split by its share; the HS column's cells are each split by the same share, so their sum differs from it by rounding (housing.owner_intermediate_gap_usd_thousands). The owner makes only its own product; the rest of HS stays with construction and housing. The owner's row of make is its commodity output, which is not its gross output: housing.owner_make_less_gross_output_usd_thousands is the difference, construction and housing carries the opposite difference, and the pair adds up to the source.",
+    "inventory": "Change in private inventories (F030) is a final use, signed as the source gives it.",
+    "judgments": [
+      "GFE, mostly the postal service, is distribution and transport.",
+      "GSLE and the general governments are public provisioning.",
+      "Public schools and hospitals are counted twice in kind: their jobs stay in household services and their output is counted under government. Stage 5 settles it.",
+      "2,080 hours a year for all trades."
+    ],
+    "limits": "No money or hour is allocated to households, sites or recipes by this table. The native reader is not built yet.",
+    "price_basis": "Product rows are at purchasers' prices: trade and transport margins and product taxes sit in the goods rows (the margin columns are positive for goods and negative for the distribution and transport trades' own products). Industry figures are at basic prices. Imports are the positive supply columns MCIF plus MADJ.",
+    "residual_rows": "Used (scrap_used) and Other (noncomparable) are product rows only.",
+    "splits": "A split industry's cell is shared by national published jobs of its NAICS leaves, over ownerships 1, 2, 3 and 5, by largest remainder on the absolute value. A product row is split first, then each part by the column split.",
+    "units": "use, supply, make and industry cells are whole USD thousands (the source's millions times 1,000, then shared); jobs cells are jobs or whole USD; split cells are jobs. Values keep the source's sign."
+  },
+  "source_controls": {
+    "T005": 21438541,
+    "T018": 49726225,
+    "T019": 54418092,
+    "VABAS": 28287688
+  },
+  "sources": {
+    "accounts_mapping": {
+      "path": "contracts/national_accounts_trade_mapping_v1.json",
+      "sha256": "84eb1ee01b692dfe420fa5ff20ca313a471c73137176c0aadea47492257bb1d0"
+    },
+    "bea_sources_manifest": {
+      "path": "tools/national_trade_accounts_2024_sources.json",
+      "sha256": "0d973eab028e3d9a9f417a189b5bf1123fe0f4754b89184ba9301851d233d794"
+    },
+    "bea_workbooks": [
+      {
+        "bytes": 1161293,
+        "id": "use_summary",
+        "path": "input-output/supply-use/Use_Summary.xlsx",
+        "sha256": "98dd61d7c2a8df7c9678b1ebff9015372ac5ed082df33f9b15e8d7bf9408f341"
+      },
+      {
+        "bytes": 822838,
+        "id": "supply_summary",
+        "path": "input-output/supply-use/Supply_Summary.xlsx",
+        "sha256": "286c42547ff83b7756aae893829d8cb54825ec4ed9bdae60fda23ec7bdc634d9"
+      },
+      {
+        "bytes": 2121639,
+        "id": "use_detail",
+        "path": "input-output/supply-use/Use_SUT_Detail.xlsx",
+        "sha256": "07aa2a21151e78ec1462c8f48142d274c153d90aff07bd797e07c6bc8486911e"
+      },
+      {
+        "bytes": 1610518,
+        "id": "supply_detail",
+        "path": "input-output/supply-use/Supply_Detail.xlsx",
+        "sha256": "7a3a403f7a7e8335e61776c1da6c423409d54090acaee597bbae738fa9a6703e"
+      }
+    ],
+    "function_mapping": {
+      "path": "contracts/national_qcew_function_mapping_v2.json",
+      "sha256": "8b5f22d979b82b0fa808bd1579feeb78279768eed915ab5f8900a5820d851c3c"
+    },
+    "leaf_basis": {
+      "metadata_sha256": "9ef0204f4093af6934539620cb34702fcfbb991e26326e8af02235c3fce22a69",
+      "path": "src/babylon/data/reference/economy/national_qcew_function_basis_v2_2024.parquet",
+      "sha256": "ed14f8b98d1e30fdf232c50873348d7ea83094430550fdd448913c2456c07e12"
+    }
+  },
+  "writer_versions": {
+    "openpyxl": "3.1.5"
+  },
+  "year": 2024
+}

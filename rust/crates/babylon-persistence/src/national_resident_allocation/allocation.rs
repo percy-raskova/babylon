@@ -7,22 +7,26 @@ use super::{households, weights};
 use crate::economic_catalog::{ResidentStaffingMemberSeed, ResidentStaffingPoolSeed};
 use crate::national_cohorts::NationalCohortReference;
 use crate::national_counties::NationalCountyReference;
-use crate::national_economy::{NationalGamePolicy, ResidentWorkplaceTarget};
+use crate::national_economy::{
+    GameWages, NationalGamePolicy, ResidentWorkplaceSource, ResidentWorkplaceTarget,
+};
 use crate::national_household_allocation::{
     CountyHouseholdAllocation, NationalHouseholdAllocation,
 };
 use crate::national_household_refinement::NationalHouseholdLeafRoster;
 use crate::national_resident_workforce::{NationalResidentWorkforceReference, WorkerClass};
+use crate::national_trade_pay::NationalTradePayReference;
 
 use babylon_graph::stable_element::StableElementKey;
 
+use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::QcewOwnership;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_kernel::geography::CountyGeoid;
 
 use babylon_material_circuit::{
     StaffingMemberBinding, StaffingMemberId, StaffingPolicy, StaffingPoolBinding,
-    StaffingWorkSource, UnitId, MAX_MATERIAL_CIRCUIT_ROWS, MAX_STAFFING_MEMBERS,
+    StaffingWorkSource, UnitId,
 };
 
 use crate::national_counties::AcsEstimate;
@@ -88,6 +92,9 @@ pub struct AssignedResidentWorkplace {
     pub target: ResidentWorkplaceTarget,
     pub weight: Option<WorkforceAllocationWeight>,
     pub members: Vec<AssignedResidentMember>,
+    /// The county-level workplace's own wage, `Some` under `GameWages::Observed`: it ranks the
+    /// county's jobs and is never a place's wage. Never hashed.
+    pub county_wage: Option<Currency>,
 }
 
 /// Exact source controls and the accounted people outside modeled civilian work.
@@ -155,6 +162,12 @@ impl ResidentWorkplaceAllocation {
     }
 }
 
+/// Bounds of the county-level source list, before places are coarsened. The list is never live: the
+/// engine's own bounds still check the folded sites. Twelve trades admit about 68,281 workplaces.
+pub(crate) const MAX_SOURCE_WORKPLACES: usize = 131_072;
+/// Bound of the source list's staffing members.
+pub(crate) const MAX_SOURCE_STAFFING_MEMBERS: usize = 262_144;
+
 /// Allocate ACS-controlled people; QCEW contributes placement weights only.
 /// # Errors
 /// Refuses missing controls, inconsistent source scope, arithmetic or sparse row bounds.
@@ -165,16 +178,21 @@ pub fn allocate_home_county(
     household_budgets: &NationalHouseholdAllocation,
     leaf_roster: &NationalHouseholdLeafRoster,
     policy: &NationalGamePolicy,
+    pay: Option<&NationalTradePayReference>,
 ) -> Result<ResidentWorkplaceAllocation> {
     if !leaf_roster.matches_sources(household_budgets)
         || household_budgets.county_source_sha256 != counties.artifact_sha256()
         || household_budgets.classes_source_sha256 != classes.artifact_sha256()
         || household_budgets.private_owner_households_bps
             != policy.households.private_owner_households_bps
+        || household_budgets.next_forty_households_bps
+            != policy.households.next_forty_households_bps
     {
         return Err(AllocationError::SourceScope);
     }
-    if policy.missing_peer_weight_per_establishment == 0 {
+    if policy.missing_peer_weight_per_establishment == 0
+        || matches!(policy.wages, GameWages::Observed) != pay.is_some()
+    {
         return Err(AllocationError::Policy);
     }
     let peers = Peers::new(cohorts)?;
@@ -226,6 +244,7 @@ pub fn allocate_home_county(
                 .county(county.geoid())
                 .map_err(|_| AllocationError::SourceScope)?,
             leaf_roster,
+            pay,
         )?);
         result.counties.push(controls);
     }
@@ -239,7 +258,8 @@ pub fn allocate_home_county(
         n.checked_add(r.members.len())
             .ok_or(AllocationError::Arithmetic)
     })?;
-    if result.workplaces.len() > MAX_MATERIAL_CIRCUIT_ROWS || member_count > MAX_STAFFING_MEMBERS {
+    if result.workplaces.len() > MAX_SOURCE_WORKPLACES || member_count > MAX_SOURCE_STAFFING_MEMBERS
+    {
         return Err(AllocationError::Bounds);
     }
     if result
@@ -259,6 +279,7 @@ pub(crate) fn assign_county(
     controls: &ResidentCountyAllocation,
     budgets: &CountyHouseholdAllocation,
     leaf_roster: &NationalHouseholdLeafRoster,
+    pay: Option<&NationalTradePayReference>,
 ) -> Result<Vec<AssignedResidentWorkplace>> {
     let mut pending = vec![];
     sites.sort_unstable_by_key(|row| row.target.site_id);
@@ -277,10 +298,14 @@ pub(crate) fn assign_county(
                 reserve: row.reserve,
             });
         }
+        let county_wage = pay
+            .map(|pay| workplace_wage(pay, &row.target))
+            .transpose()?;
         pending.push(PendingAssignedWorkplace {
             target: row.target,
             weight: row.weight,
             members,
+            county_wage,
         });
     }
     let owners = controls.source_classes[1]
@@ -305,10 +330,12 @@ pub(crate) fn assign_county(
                 reserve: 0,
             });
         }
+        let county_wage = pay.map(|pay| workplace_wage(pay, &target)).transpose()?;
         pending.push(PendingAssignedWorkplace {
             target,
             weight: None,
             members,
+            county_wage,
         });
     }
     households::partition(&pending, budgets, leaf_roster)
@@ -318,6 +345,35 @@ pub(crate) struct PendingAssignedWorkplace {
     pub(crate) target: ResidentWorkplaceTarget,
     pub(crate) weight: Option<WorkforceAllocationWeight>,
     pub(crate) members: Vec<PendingResidentMember>,
+    pub(crate) county_wage: Option<Currency>,
+}
+
+/// A county-level workplace's own wage: its pay row's wage for a source workplace; the county's
+/// average for a fallback or a household enterprise. Used to rank that county's jobs, never as a
+/// place's wage.
+///
+/// # Errors
+/// `MissingObservation` for a source workplace with no pay row or a row with no wage;
+/// `SourceScope` for a target the allocation does not make.
+pub(crate) fn workplace_wage(
+    pay: &NationalTradePayReference,
+    target: &ResidentWorkplaceTarget,
+) -> Result<Currency> {
+    match &target.source {
+        ResidentWorkplaceSource::Qcew(key) => pay
+            .row(*key)
+            .ok_or(AllocationError::MissingObservation)?
+            .hourly_wage()
+            .map_err(|_| AllocationError::MissingObservation),
+        ResidentWorkplaceSource::HouseholdEnterprise
+        | ResidentWorkplaceSource::ResidentEmployerFallback => {
+            let EconomicLocation::County(county) = target.location else {
+                return Err(AllocationError::SourceScope);
+            };
+            Ok(pay.county_average(county.geoid()))
+        }
+        ResidentWorkplaceSource::Representative(_) => Err(AllocationError::SourceScope),
+    }
 }
 
 #[derive(Clone, Copy)]

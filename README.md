@@ -131,7 +131,7 @@ Restricted views already limit facts by player knowledge. The planned decision
 cycle adds player and AI intent plus durable action receipts.
 
 Read [`NORTH_STAR.md`](NORTH_STAR.md) for the full system model. Read
-[`CONSTITUTION.md`](CONSTITUTION.md) v4.2.0 for the constitutional law.
+[`CONSTITUTION.md`](CONSTITUTION.md) v4.4.0 for the constitutional law.
 
 ## Live system
 
@@ -210,6 +210,8 @@ Open or continue the native observer:
 ```bash
 mise run play
 ```
+
+A small test economy that is not Wayne and is not saved opens with `mise run play:small-world`.
 
 The launcher builds the runtime and client, reuses a reachable local database,
 and prepares the campaign at its durable period. New campaigns start at period

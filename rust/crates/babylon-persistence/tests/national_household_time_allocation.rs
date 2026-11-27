@@ -25,6 +25,7 @@ fn all_counties_account_for_eligible_nonworkers_without_creating_workers() {
         household_source,
         workforce_source,
         1_000,
+        None,
     )
     .expect("the fixture households fit the authored cohorts");
     let before = households.clone();

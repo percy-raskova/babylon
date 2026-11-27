@@ -1,11 +1,12 @@
+use super::artifact::TablePins;
 use super::mapping::FunctionMapping;
 use super::{
     CohortKey, CohortReference, KnownSubtotal, NationalCohortReferenceError as Error,
-    QcewDisclosure, SourceMember, ADMITTED_COUNT, GROUP_COUNT, MEMBER_COUNT,
+    QcewDisclosure, SourceMember,
 };
 
 use crate::national_counties::NationalCountyReference;
-use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
+use babylon_kernel::economic_identity::{QcewOwnership, TradeSet};
 use babylon_kernel::geography::CountyGeoid;
 
 const HEADER: &str = "county_geoid,function_id,ownership_code,admitted,member_count,establishments_known,establishments_published_members,jobs_known,jobs_published_members,payroll_known,payroll_published_members,members";
@@ -16,6 +17,7 @@ pub(super) fn parse_csv(
     text: &str,
     mapping: &FunctionMapping,
     counties: &NationalCountyReference,
+    pins: TablePins,
 ) -> Result<Vec<CohortReference>, Error> {
     if !text.is_ascii() || !text.ends_with('\n') || text.contains('\r') {
         return Err(Error::Header);
@@ -24,13 +26,13 @@ pub(super) fn parse_csv(
     if lines.next() != Some(HEADER) {
         return Err(Error::Header);
     }
-    let mut groups: Vec<CohortReference> = Vec::with_capacity(GROUP_COUNT);
+    let mut groups: Vec<CohortReference> = Vec::with_capacity(pins.groups);
     let mut member_count = 0;
     for line in lines {
-        if groups.len() == GROUP_COUNT {
+        if groups.len() == pins.groups {
             return Err(Error::Bound);
         }
-        let group = parse_group(line, mapping, counties)?;
+        let group = parse_group(line, mapping, counties, pins.trades)?;
         if groups
             .last()
             .is_some_and(|prior| prior.key() >= group.key())
@@ -38,14 +40,14 @@ pub(super) fn parse_csv(
             return Err(Error::GroupOrder);
         }
         member_count += group.members().len();
-        if member_count > MEMBER_COUNT {
+        if member_count > pins.members {
             return Err(Error::Bound);
         }
         groups.push(group);
     }
-    if groups.len() != GROUP_COUNT
-        || member_count != MEMBER_COUNT
-        || groups.iter().filter(|row| row.is_admitted()).count() != ADMITTED_COUNT
+    if groups.len() != pins.groups
+        || member_count != pins.members
+        || groups.iter().filter(|row| row.is_admitted()).count() != pins.admitted
     {
         return Err(Error::Coverage);
     }
@@ -56,6 +58,7 @@ pub(super) fn parse_group(
     line: &str,
     mapping: &FunctionMapping,
     counties: &NationalCountyReference,
+    trades: TradeSet,
 ) -> Result<CohortReference, Error> {
     let fields: [&str; 12] = line
         .splitn(13, ',')
@@ -69,7 +72,7 @@ pub(super) fn parse_group(
     let function = if fields[1].is_empty() {
         None
     } else {
-        Some(EconomicFunction::from_source_key(fields[1]).ok_or(Error::Function)?)
+        Some(trades.from_source_key(fields[1]).ok_or(Error::Function)?)
     };
     let ownership = QcewOwnership::from_source_code(fields[2]).ok_or(Error::Ownership)?;
     let key = CohortKey {

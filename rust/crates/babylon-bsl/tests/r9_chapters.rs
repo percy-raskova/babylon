@@ -42,7 +42,7 @@ use babylon_bsl::typecheck;
 use babylon_bsl::typecheck::{TypeCode, TypeEnv};
 use babylon_bsl::types::EnumRegistry;
 use babylon_bsl::vocabulary::{ClosedVocabulary, EnumKind};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 // ------------------------------------------------------------- fixtures
 
@@ -131,6 +131,7 @@ fn type_env() -> TypeEnv {
         registry.declare(&e(source), &v, &enums()).expect(source);
     }
     TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: registry.type_env_fields(),
         exemptions: &[],
     }
@@ -1928,7 +1929,7 @@ mod c8_typed_neighbours_and_naming {
     use babylon_bsl::types::EnumRegistry;
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::substrate::GraphSubstrate;
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     /// D51: the operand is **mandatory**, so the pre-C8 three-operand form
     /// is an arity error rather than a silently edge-type-only bound.
@@ -2078,6 +2079,7 @@ mod c8_typed_neighbours_and_naming {
         // degrading, so `None` here would turn this family's `field-of`
         // vectors into driver-error tests instead of field-read tests.
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::new(),
             exemptions: &[],
         };
@@ -2230,7 +2232,7 @@ mod c9_metric_registration {
     use babylon_bsl::evaluator::EvalCode;
     use babylon_bsl::metrics::{MetricDomain, MetricRegistry};
     use babylon_bsl::typecheck::{TypeCode, TypeEnv};
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     const GRAPH: &str = "(metric solidarity-density :type coefficient :kind intensive \
         (domain :graph) :provider topology-scores)";
@@ -2347,6 +2349,7 @@ mod c9_metric_registration {
         let mut fields = HashMap::new();
         registry().merge_into_kind_env(&mut fields);
         let env = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields,
             exemptions: &[],
         };
@@ -2835,6 +2838,386 @@ mod c14_rng_draw_retirement {
             .call("rng-draw", &[], IntrinsicCallCtx::context_free())
             .expect_err("the author-visible RNG path is retired");
         assert!(error.message.contains("no intrinsic registered"));
+    }
+}
+
+// ====================================================== family 23 — Amendment AG (i)
+// Attributed membership: the value a membership carries (§2.8, §2.9, §2.10,
+// §2.12, §3.9 clause 6). This module began with the field-free twin of the
+// nation fixture (Task 10 of the memberships plan): the world with NO
+// membership `deffield` and bare member items, whose state hash was pinned on
+// the tree before any membership value existed. Every later task of the plan
+// runs it, so a byte that moves for a field-free world is caught in the task
+// that moved it. The tests that read and write a membership's value are not
+// in this module: they are in its sibling, `ag_attributed_membership_nations`,
+// below.
+mod ag_attributed_membership {
+    use babylon_bsl::scenario;
+    use babylon_graph::memory::MemoryGraph;
+    use babylon_graph::state_hash::CanonicalState;
+
+    /// Groups g1 and g2; nations n1 over {g1, g2} and n2 over {g1}; each
+    /// nation carries `nation/code` (1 and 2) so a rule can tell them apart.
+    const FIELD_FREE_NATIONS: &str = r"
+(scenario ft/field-free-nations
+  (defvocabulary NodeType (GROUP))
+  (defvocabulary HyperedgeType (NATION))
+  (deffield nation/code int extensive)
+  (node g1 NodeType/GROUP)
+  (node g2 NodeType/GROUP)
+  (hyperedge n1 HyperedgeType/NATION (members g1 g2))
+  (hyperedge n2 HyperedgeType/NATION (members g1))
+  (hyperedge-attr n1 nation/code 1)
+  (hyperedge-attr n2 nation/code 2))
+";
+
+    fn hex(bytes: &[u8; 32]) -> String {
+        use std::fmt::Write as _;
+        bytes.iter().fold(String::new(), |mut out, b| {
+            let _ = write!(out, "{b:02x}");
+            out
+        })
+    }
+
+    /// Review Focus 1: a world with no membership field keeps every byte.
+    /// The hex was captured on the tree before the library pin moved.
+    #[test]
+    fn a_world_without_the_field_hashes_as_before() {
+        let mut graph = MemoryGraph::new();
+        scenario::load_scenario(FIELD_FREE_NATIONS, &mut graph)
+            .expect("the field-free nation fixture loads");
+        let digest = graph
+            .state_hash()
+            .expect("the fixture graph hashes its state");
+        assert_eq!(
+            hex(&digest),
+            "f8d13e4278245c1f3c2600b8082980e5616b94d26177d876d1224d09bc9dc9a2"
+        );
+    }
+}
+
+// ============================================ Family 23: attributed membership
+//
+// §6.2 family 23 over the nation case (§2.12; the housing design's rule H1 is
+// its second consumer). The fixture is NOT the field-free twin above plus a
+// `:member` line: besides `nation/households` it declares `group/id`, the two
+// fields `group/read-1` and `group/read-2` that a rule writes its reads into,
+// and the intensive `nation/visibility`. It gives each group a field of its
+// own so that a rule (which has a node for its subject and cannot name `n1` or
+// `g1`) can bind the group, reach its nations with `hyperedges-of`, and tell
+// them apart by `nation/code`; the field-free twin needs none of that, its only
+// job being to hold the bytes of a world without the field.
+//
+// Owed to the shape-verb lane, and not served here: the vectors of family 23
+// that need a RULE's `add-hyperedge` (the mint-time `(member ...)` items and
+// the roster replacement), because all six shape verbs are refused at load
+// (`structural_verbs.rs` `DEFERRED_SHAPE_VERBS`). Their hydration twins are
+// the scenario tests of `tests/membership_seeding.rs` (Task 7).
+mod ag_attributed_membership_nations {
+    use babylon_bsl::bindings::BindingVocabulary;
+    use babylon_bsl::bound_checker;
+    use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
+    use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
+    use babylon_bsl::reader;
+    use babylon_bsl::rule_pipeline::{self, LoadContext, LoadedRule};
+    use babylon_bsl::scenario::{self, LoadedScenario};
+    use babylon_bsl::structural_verbs::CollectingSink;
+    use babylon_bsl::tick::{self, DefinesEnv};
+    use babylon_bsl::typecheck::TypeEnv;
+    use babylon_graph::memory::MemoryGraph;
+    use babylon_graph::stable_element::StableElementResolver;
+    use babylon_graph::state_hash::CanonicalState;
+    use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
+    use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngSeedContext};
+    use std::collections::{HashMap, HashSet};
+
+    /// Groups g1 and g2 (each carries its own `group/id`, and two fields a
+    /// rule writes a read into); nations n1 over {g1, g2} and n2 over {g1}.
+    /// (n1, g1) = 120, (n1, g2) = 40, (n2, g1) = 30. Each nation carries
+    /// `nation/code` (1 and 2). `nation/visibility` is an intensive payload
+    /// field, declared for the fold-kind tests.
+    const NATIONS: &str = r"
+(scenario ft/nations
+  (defvocabulary NodeType (GROUP))
+  (defvocabulary HyperedgeType (NATION))
+  (deffield group/id int extensive)
+  (deffield group/read-1 int extensive)
+  (deffield group/read-2 int extensive)
+  (deffield nation/code int extensive)
+  (deffield nation/households int extensive :member NodeType/GROUP)
+  (deffield nation/visibility probability intensive :member NodeType/GROUP)
+  (node g1 NodeType/GROUP (group/id 1))
+  (node g2 NodeType/GROUP (group/id 2))
+  (hyperedge n1 HyperedgeType/NATION (members
+    (member NodeType/GROUP g1 (nation/households 120) (nation/visibility 0.5p))
+    (member NodeType/GROUP g2 (nation/households 40) (nation/visibility 0.25p))))
+  (hyperedge n2 HyperedgeType/NATION (members
+    (member NodeType/GROUP g1 (nation/households 30) (nation/visibility 1p))))
+  (hyperedge-attr n1 nation/code 1)
+  (hyperedge-attr n2 nation/code 2))
+";
+
+    const PRE: &str =
+        ":role mechanic :evidence derived :material-basis \"the nation\" :fuel 262144";
+
+    const READ_EACH_NATION: &str = "(rule demo/read-nations PRE \
+        (domain NodeType/GROUP) (bindings (binding gid :field group/id)) \
+        (effects (for-each (hyperedges-of self HyperedgeType/NATION) :as n \
+          (guard (= (field-of n nation/code) 1) \
+            (update-node self group/read-1 (set (membership-field-of n self nation/households)))) \
+          (guard (= (field-of n nation/code) 2) \
+            (update-node self group/read-2 (set (membership-field-of n self nation/households)))))))";
+
+    const WRITE_NATION_ONE: &str = "(rule demo/write-nation-one PRE \
+        (domain NodeType/GROUP) (bindings (binding gid :field group/id)) \
+        (when (= gid 1)) \
+        (effects (for-each (hyperedges-of self HyperedgeType/NATION) :as n \
+          (guard (= (field-of n nation/code) 1) \
+            (update-membership n self nation/households (add 5))))))";
+
+    fn hex(bytes: &[u8; 32]) -> String {
+        use std::fmt::Write as _;
+        bytes.iter().fold(String::new(), |mut out, b| {
+            let _ = write!(out, "{b:02x}");
+            out
+        })
+    }
+
+    fn ceilings(max_members: u64) -> CardinalityCeilings {
+        CardinalityCeilings::new(
+            HashMap::from([
+                ("NodeType/GROUP".to_owned(), 100),
+                ("HyperedgeType/NATION".to_owned(), 10),
+            ]),
+            HashMap::from([("HyperedgeType/NATION".to_owned(), max_members)]),
+        )
+    }
+
+    struct World {
+        graph: MemoryGraph,
+        scenario: LoadedScenario,
+        types: TypeEnv,
+    }
+
+    fn world() -> World {
+        let mut graph = MemoryGraph::new();
+        let scenario = scenario::load_scenario(NATIONS, &mut graph).expect("the nations load");
+        let types = TypeEnv {
+            membership_fields: scenario.membership_fields.clone(),
+            fields: scenario.fields.clone(),
+            exemptions: &[],
+        };
+        World {
+            graph,
+            scenario,
+            types,
+        }
+    }
+
+    fn load_with(world: &World, source: &str, max_members: u64) -> Result<LoadedRule, String> {
+        let vocab = BindingVocabulary {
+            fields: world.types.fields.keys().cloned().collect(),
+            consts: HashSet::new(),
+            probability_consts: HashSet::new(),
+            metrics: HashSet::new(),
+        };
+        let ceilings = ceilings(max_members);
+        let intrinsics = IntrinsicCosts::default();
+        let systems: HashSet<String> = HashSet::from(["demo".to_owned()]);
+        let ctx = LoadContext {
+            vocabulary: &vocab,
+            types: &world.types,
+            enums: &world.scenario.enums,
+            const_values: &world.scenario.consts,
+            ceilings: &ceilings,
+            intrinsics: &intrinsics,
+            systems: &systems,
+            vocabulary_registry: None,
+            rule_file: "tests/r9_chapters.rs",
+        };
+        rule_pipeline::load_rule(&source.replace("PRE", PRE), &ctx)
+            .map_err(|error| error.spec_code().unwrap_or("<uncoded>").to_owned())
+    }
+
+    fn run_tick(world: &mut World, source: &str) {
+        let loaded = load_with(world, source, 32).expect("the rule loads");
+        let session = ReplaySessionId::try_from("family-23-nations").expect("literal is non-empty");
+        let resolver = StableElementResolver::seal(
+            &world.graph,
+            &world.scenario.id,
+            &world.scenario.node_content_ids,
+            &world.scenario.hyperedge_content_ids,
+        )
+        .expect("the fixture seals the prepared period");
+        let mut sink = CollectingSink::default();
+        tick::run_tick(
+            &loaded,
+            &world.types,
+            &world.scenario.enums,
+            &EmptyIntrinsicHost,
+            &mut world.graph,
+            &mut sink,
+            &IntrinsicCosts::default(),
+            &DefinesEnv::new(),
+            1,
+            RngSeedContext {
+                session: &session,
+                seed: ReplaySeed::new(0),
+            },
+            &resolver,
+            None,
+        )
+        .expect("the tick runs");
+    }
+
+    /// The fixture's nations and groups by the names the scenario gave them (its content
+    /// ids), never by their position in id order.
+    fn ids(world: &World) -> (HyperedgeId, HyperedgeId, NodeId, NodeId) {
+        let nation = |name: &str| {
+            *world
+                .scenario
+                .hyperedge_content_ids
+                .iter()
+                .find(|(_, local)| local.as_str() == name)
+                .map(|(id, _)| id)
+                .expect("the scenario names this nation")
+        };
+        let group = |name: &str| {
+            *world
+                .scenario
+                .node_content_ids
+                .iter()
+                .find(|(_, local)| local.as_str() == name)
+                .map(|(id, _)| id)
+                .expect("the scenario names this group")
+        };
+        (nation("n1"), nation("n2"), group("g1"), group("g2"))
+    }
+
+    fn households(world: &World, nation: HyperedgeId, group: NodeId) -> f64 {
+        world
+            .graph
+            .membership_attribute(nation, group, "nation/households")
+            .expect("the fixture membership carries its count")
+    }
+
+    #[test]
+    fn each_nation_reads_its_own_count() {
+        let mut world = world();
+        run_tick(&mut world, READ_EACH_NATION);
+        let (_, _, g1, g2) = ids(&world);
+        let read = |g, q: &str| world.graph.node_attribute(g, q).ok();
+        assert_eq!(read(g1, "group/read-1"), Some(120.0));
+        assert_eq!(read(g1, "group/read-2"), Some(30.0));
+        assert_eq!(read(g2, "group/read-1"), Some(40.0));
+        assert_eq!(read(g2, "group/read-2"), None, "g2 belongs to n1 alone");
+    }
+
+    #[test]
+    fn writing_one_nation_leaves_the_other() {
+        let mut world = world();
+        let before = world.graph.state_hash().expect("the world hashes");
+        run_tick(&mut world, WRITE_NATION_ONE);
+        let (n1, n2, g1, g2) = ids(&world);
+        assert_eq!(households(&world, n1, g1).to_bits(), 125.0_f64.to_bits());
+        assert_eq!(households(&world, n2, g1).to_bits(), 30.0_f64.to_bits());
+        assert_eq!(households(&world, n1, g2).to_bits(), 40.0_f64.to_bits());
+        let after = world.graph.state_hash().expect("the world hashes");
+        assert_ne!(hex(&before), hex(&after), "a membership value is state");
+    }
+
+    #[test]
+    fn an_intensive_payload_under_an_unweighted_mean_is_e_type_042() {
+        let world = world();
+        let mean = |weight: &str| {
+            format!(
+                "(rule demo/mean PRE (domain :graph) (bindings) \
+                 (when (< (fold max (hyperedges HyperedgeType/NATION) :as h \
+                    (fold mean (members-of h HyperedgeType/NATION) \
+                          (membership-field-of h it nation/visibility) {weight})) 0.5i)) \
+                 (effects (update-node (select-max (nodes NodeType/GROUP) :as g \
+                    (field-of g group/id)) group/read-1 (set 1))))"
+            )
+        };
+        assert_eq!(
+            load_with(&world, &mean(""), 32).err().as_deref(),
+            Some("E-TYPE-042")
+        );
+        let weighted = mean(":weight (membership-field-of h it nation/households)");
+        assert_eq!(load_with(&world, &weighted, 32).err(), None);
+    }
+
+    /// §2.12's worked shape: a two-hop fold from the member, reading the
+    /// payload, weighted by the extensive one, under a kind-neutral `max`.
+    #[test]
+    fn the_two_hop_worked_shape_loads() {
+        let world = world();
+        let source = "(rule demo/peak PRE (domain NodeType/GROUP) \
+            (bindings (binding peak :expr \
+              (fold max (hyperedges-of self HyperedgeType/NATION) :as c \
+                (fold mean (members-of c HyperedgeType/NATION) \
+                      (membership-field-of c it nation/visibility) \
+                      :weight (membership-field-of c it nation/households))))) \
+            (when (< peak 0.5i)) \
+            (effects (update-node self group/read-1 (set 1))))";
+        assert_eq!(load_with(&world, source, 32).err(), None);
+        // `sum` over the weighted (intensive) mean is the recorded variance error.
+        let summed = source.replace("(fold max", "(fold sum");
+        assert_eq!(
+            load_with(&world, &summed, 32).err().as_deref(),
+            Some("E-TYPE-041")
+        );
+    }
+
+    /// The bound of a fold that reads payload is the declared `:max-members`
+    /// times the body's cost: linear in it, and no membership axis of its own.
+    #[test]
+    fn a_fold_over_members_reading_payload_is_bounded_by_max_members() {
+        let source = reader::read(
+            "(fold sum (hyperedges HyperedgeType/NATION) :as h \
+               (fold sum (members-of h HyperedgeType/NATION) \
+                     (membership-field-of h it nation/households)))",
+        )
+        .expect("parses")
+        .0;
+        let cost = |max_members| {
+            bound_checker::expr_cost(&source, &ceilings(max_members), &IntrinsicCosts::default())
+                .expect("the fold is bounded by the declared ceilings")
+        };
+        let (one, two, three) = (cost(1), cost(2), cost(3));
+        assert!(two > one, "the bound grows with :max-members");
+        assert_eq!(two - one, three - two, "and grows linearly with it");
+
+        // §6.2 family 23, §3.7: the bound equals that of the same fold whose body reads
+        // nothing, plus the accessor's constant for each member the fold may visit (the
+        // nation ceiling's hyperedges, each at most `:max-members` members).
+        let silent = reader::read(
+            "(fold sum (hyperedges HyperedgeType/NATION) :as h \
+               (fold sum (members-of h HyperedgeType/NATION) 1))",
+        )
+        .expect("parses")
+        .0;
+        let body = |text: &str| {
+            let (expr, _) = reader::read(text).expect("parses");
+            bound_checker::expr_cost(&expr, &ceilings(1), &IntrinsicCosts::default())
+                .expect("a lone body is bounded")
+        };
+        let accessor_extra = body("(membership-field-of h it nation/households)") - body("1");
+        assert!(accessor_extra > 0, "the accessor costs more than a literal");
+        let nations = 10; // `ceilings`' HyperedgeType/NATION population
+        for max_members in [1_u64, 2, 3] {
+            let silent_cost = bound_checker::expr_cost(
+                &silent,
+                &ceilings(max_members),
+                &IntrinsicCosts::default(),
+            )
+            .expect("the silent fold is bounded");
+            assert_eq!(
+                cost(max_members),
+                silent_cost + nations * max_members * accessor_extra,
+                "at :max-members {max_members}"
+            );
+        }
     }
 }
 

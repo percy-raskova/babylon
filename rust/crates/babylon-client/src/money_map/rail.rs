@@ -77,16 +77,7 @@ pub(super) fn location(key: Option<&str>, atlas: &CountyAtlas) -> String {
 pub(super) fn labor_hours(micros: &str) -> String {
     micros.parse::<u128>().map_or_else(
         |_| format!("{micros} recorded microhours"),
-        |value| {
-            let whole = crate::human_numbers::grouped(value / 1_000_000);
-            let fraction = format!("{:06}", value % 1_000_000);
-            let fraction = fraction.trim_end_matches('0');
-            if fraction.is_empty() {
-                format!("{whole} recorded h")
-            } else {
-                format!("{whole}.{fraction} recorded h")
-            }
-        },
+        |value| format!("{} recorded h", crate::human_numbers::micro_hours(value)),
     )
 }
 

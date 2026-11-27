@@ -1,7 +1,7 @@
 Architecture Boundary
 =====================
 
-``CONSTITUTION.md`` v4.2.0 governs the architecture. ``NORTH_STAR.md`` gives
+``CONSTITUTION.md`` v4.4.0 governs the architecture. ``NORTH_STAR.md`` gives
 the game direction and gate order. This page describes the current Rust
 implementation and persistence boundary.
 
@@ -444,12 +444,29 @@ Separate dependent lookup queries prevent stale statistics from multiplying whol
 campaign lookup tables before matching those IDs. Marker checks, permissions
 and canonical component authentication remain required.
 
-A regression holds
-prior campaign statistics while adding a new campaign. The original node read
-timed out at five seconds. The revised views returned all 1,696 nodes in 26 ms
-and all 8,800 binary64 attributes in 60 ms, matching the live graph exactly.
-The control took 30.04 seconds. This scoped result does not prove national
-timing, memory, storage or play qualification.
+A regression once held an earlier campaign's statistics while a fresh campaign
+committed its first period. The original node read then timed out at five seconds
+and the revised views returned all 1,696 nodes in 26 ms and all 8,800 binary64
+attributes in 60 ms. The control took 30.04 seconds. Since PER-364 the commit of
+every campaign's first period refreshes the statistics of the graph tables itself,
+and a new campaign has no graph rows to read before that commit, so that state can
+no longer be reached through the product. The regression now commits the fresh
+campaign's first period through the product, with its refresh, then holds those
+first-publication statistics with a lock that excludes any later ``ANALYZE``,
+commits period 2, which the product does not refresh for, and reads that period
+under the same five-second ceiling. It returned all 1,696 nodes in 14 ms and all
+8,800 binary64 attributes in 26 ms in one run (18 ms and 30 ms in another),
+matching the live graph exactly. A throwaway control installed the first revised
+form of the views (``64d1059c1^``, the dependent ``OFFSET 0`` lookups that
+``99b510107`` introduced) and read the same period in 20 ms and 44 ms. That form
+cannot multiply whole lookup tables, so its pass does not show that this read can
+fail. The form the regression originally guarded against, plain joins over the
+chunk table's ``node_ids`` from before ``99b510107``, cannot be installed against
+today's tables, which the node vector table replaced. This read has therefore not
+been shown able to fail. Protection against multiplied lookup tables rests on the
+views' dependent lookups and on the first-publication refresh with its own live
+test. This scoped result does not prove national timing, memory, storage or play
+qualification.
 
 Persistence uses the pinned ``mimalloc`` heap allocator for its Rust consumers,
 including the runtime, client and qualification processes. In a separate

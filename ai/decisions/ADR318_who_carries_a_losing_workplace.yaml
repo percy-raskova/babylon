@@ -1,0 +1,110 @@
+ADR318_who_carries_a_losing_workplace:
+  title: An owner covers a loss only while it is their best use; a bank carries a workplace by its capital, for a term
+  date: '2026-11-22'
+  status: accepted
+  issue: PER-371
+  evidence_class: Designed
+  authority:
+    - >-
+        Director, 2026-11-22, in the question dialog, asked whether an owner
+        may keep a losing workplace open with their own money: "While it's
+        their best use".
+    - >-
+        Director, 2026-11-22, in the question dialog, asked how far a bank may
+        carry a workplace whose sales have fallen: "Bank's capital, with a due
+        date".
+  context: |
+    Round 7b of the measurement put a bank on the small test economy as ADR314
+    words it (`reports/economy-repair-2026-11-20/restoring-forces/round-7b.md`).
+    The bank behaved soundly and kept no workplace open. A workplace stopped
+    for good in 9, 9, 6 and 9 of the 17 pushed runs (the small figures at 200
+    and 400 periods, then the country's), where no credit gave 9, 9, 5 and 11.
+    Two things made it so. As worded, a loan to keep running is drawn at the
+    opening and repaid from sales at the close: of 1,836 periods in which a
+    workplace drew a loan (the small figures, 200 periods), 1,807 ended with
+    nothing owed. And A10 bounds that loan by the borrower's last sales, so the
+    bank refuses the workplace whose sales fell. With that bound taken away a
+    workplace stopped in 2, 4, 0 and 1 runs, but debts with their unpaid
+    interest still grew at the end at 2, 8, 4 and 4 workplaces, and the bank's
+    cash reached $0 in 1, 3, 0 and 1 runs.
+
+    The same round showed what had kept every workplace open in rounds four to
+    seven. It was not credit. The test bench had owners put their own money
+    into a workplace that could not pay its wages, and never asked it back.
+    ADR314 has no such rule, and it names a stabilizer that hides the economy
+    as a failure.
+  decision: |
+    L1. AN OWNER'S OWN MONEY FOLLOWS THE ORDER OF A19. An owner puts money into
+    a workplace that is losing only while that workplace is the best use the
+    owner has for that money. A company has other uses, so it puts in nothing
+    and cuts its losses: it sheds hands, cuts pay, shuts the workplace or sells
+    it. A household whose one small business is the only use it has for its
+    savings covers the loss from them until they are gone; then the business
+    fails and the household goes back to wage work (A18). No rule names the two
+    kinds of owner. The difference follows from what each has.
+
+    L2. A LOAN TO KEEP RUNNING IS BOUNDED BY THE BANK, NOT BY THE BORROWER'S
+    LAST SALES. The bank's test stays: what the loan pays for must sell above
+    its cost and the interest. The bank's own bound stays: the law's multiple
+    of its capital. The bound of this kind of loan by the borrower's last sales
+    is taken away. The bounds of the other kinds of loan stay as they are.
+
+    L3. A LOAN HAS A TERM. It falls due at the end of its term. What is unpaid
+    of it then counts as not paying (A11), whatever smaller sums the borrower
+    pays, so a workplace that never recovers is taken in the end. The length
+    of the term is a policy row, set by measurement.
+  amends:
+    - >-
+        ADR314 A10: "each loan is bounded by the borrower's own books" no
+        longer holds for a loan to keep running (L2), and every such loan has
+        a term (L3).
+    - >-
+        ADR314 A11: a loan unpaid at its due date counts as not paying from
+        that date (L3).
+    - >-
+        ADR314 A19: an owner's own money is one of the uses that the ranking
+        orders (L1).
+    - >-
+        The design's A6 said that credit is what gives a sound workplace spare
+        money. A loan repaid at the close leaves none. A loan that stands for
+        its term can, and so can an owner's own money under L1.
+  alternatives_rejected:
+    - >-
+        Nobody covers a loss, the design as it was written. Every owner falls
+        at once, small or big, and recovery hangs on buyers alone.
+    - >-
+        Any owner covers a loss for as long as they like, the test bench's
+        stand-in made a rule. Measured in rounds four to seven: nothing ever
+        shuts, and a slump leaves no marks.
+    - >-
+        The loan bounded by last sales, as worded. Measured in round 7b: it
+        bridges one period and cannot carry a slump.
+    - >-
+        The loan bounded by the bank's capital with no due date. Measured in
+        round 7b: a workplace that pays a little is never taken, and its debt
+        grows without end.
+  open_questions:
+    - 'The length of the term. Not measured yet.'
+    - >-
+        What counts as paying a loan that is overdue: whether a part payment
+        holds off the taking.
+    - >-
+        How the best use is reckoned for a household with one business, and
+        when such a household gives up before its savings are gone.
+    - >-
+        The small test economy has no small owner: one owner account holds
+        every share of the four workplaces of its copy. It must grow a small
+        owner before L1 can be measured.
+  verification: |
+    As ADR314 has it: each rule is first a throwaway prototype behind a switch
+    on the small test economy, measured for 400 periods at the small world's
+    figures and at the country's, and checked by a second reader against the
+    rows. It must show: a company's losing workplace gets none of its owner's
+    money; a household's one business is carried until its savings are gone
+    and then fails; with the loan of L2 and L3, credit carries a workplace
+    through a shock that ends; a workplace that never recovers is taken; no
+    debt grows without end; and money is exact in every period.
+  related:
+    - ADR314_how_the_economy_adjusts
+    - ADR315_homes_rent_and_nation
+    - ADR319_a_shock_is_not_a_failure

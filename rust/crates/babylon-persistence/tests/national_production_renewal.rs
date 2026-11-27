@@ -148,6 +148,7 @@ fn accounting(retailer: u8) -> CircuitAccounting {
 }
 fn seed(retailer: u8, opening: u64) -> (MaterialCatalog, MaterialCircuitState) {
     let catalog = MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![],
         process_outputs: vec![ProcessOutput {

@@ -45,6 +45,7 @@ impl EconomicOpening {
     /// engine invariant. Monetary opening orders require a separate funded import.
     pub fn compile(&self) -> Result<CompiledEconomicOpening> {
         let mut catalog = empty_catalog();
+        catalog.market_clearing.clone_from(&self.market_clearing);
         let mut state = empty_state();
         state.capacity_reservations.equipment = self.equipment_position.clone();
         catalog.company_portfolios = self.policies.company_portfolios;
@@ -73,6 +74,7 @@ impl EconomicOpening {
 
 fn empty_catalog() -> MaterialCatalogDefinition {
     MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![],
         process_outputs: vec![],
@@ -197,6 +199,7 @@ fn append_sites(
                             good_id: row.good_id,
                             unit_id: row.unit_id,
                             hours_per_unit: row.hours_per_unit,
+                            units: row.units,
                         }),
                 );
         }

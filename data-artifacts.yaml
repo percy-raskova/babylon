@@ -1583,6 +1583,90 @@ artifacts:
       county roster. Kalawao has residents but no invented workplace group.
       This capture allocates no persons, households, firms, physical recipes,
       capacities, operating inventories or money and initializes no campaign.
+  - name: national_qcew_function_basis_v2_2024
+    format: parquet
+    source_table: null
+    generator: tools/make_national_qcew_function_basis_v2.py
+    mode: register
+    rows: 188966
+    sha256: ed14f8b98d1e30fdf232c50873348d7ea83094430550fdd448913c2456c07e12
+    home: src/babylon/data/reference/economy/national_qcew_function_basis_v2_2024.parquet
+    material_relation: >-
+      Part of PER-371: the twelve-trade 2024 QCEW basis of the country's
+      rebuilt opening. County leaf rows (151199) keep the county, NAICS and
+      ownership cells of contracts/national_qcew_function_mapping_v2.json;
+      county parent rows (32482) are kept, published or withheld, so a
+      withheld child can be placed under its parent; state leaf rows (5119)
+      and national leaf rows (166) give the wage fallbacks. Suppressed
+      measures remain null. Parent rows are placement controls and never
+      additive output. Domestic xx999 jobs remain unallocated. Source pins
+      reuse tools/national_county_reference_2024_sources.json. This table
+      grants no worker or site allocation and no runtime hydration.
+  - name: national_cohort_reference_v2_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_national_cohort_reference_v2.py
+    mode: register
+    rows: 66920
+    sha256: 09ff890974342878a98929adcca5de766fcc7aa54aae869d999827940eb34d12
+    home: src/babylon/data/reference/economy/national_cohort_reference_v2_2024.csv.gz
+    material_relation: >-
+      Part of PER-371: the twelve-trade county cohort groups that stage 2's
+      native reader parses, in version 1's twelve columns. Members are the
+      151199 county leaf cells of the version 2 jobs basis, grouped by county,
+      trade and ownership; consumer goods and leisure and hospitality are
+      groups of their own. Suppressed measures stay unknown, never zero.
+      Admission allocates no workers, sites, recipes or money, and nothing
+      hydrates a campaign. Version 1's table is unchanged.
+  - name: national_trade_pay_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_national_trade_pay.py
+    mode: register
+    rows: 65065
+    sha256: c88289b106d37a723ab0756e5127b1f71fa665e2b92ba50873d3bc5ed0f03267
+    home: src/babylon/data/reference/economy/national_trade_pay_2024.csv.gz
+    material_relation: >-
+      Part of PER-371: rule O2 of the national opening. One row for each
+      admitted group of the version 2 cohort table, with its jobs and payroll
+      (published members plus withheld members placed under their published
+      parents) and the pair of jobs and payroll that names its wage, taken from
+      the county, its state, the nation, or the nation over all ownerships.
+      Placed values are derived shares, never observations. Nothing hydrates a
+      campaign, and the reader is babylon-persistence::national_trade_pay.
+  - name: national_trade_accounts_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_national_trade_accounts.py
+    mode: register
+    rows: 811
+    sha256: 398d48d346a5676413823559a6244c34faa34a5e050f34262872c4c8e0e503b3
+    home: src/babylon/data/reference/economy/national_trade_accounts_2024.csv.gz
+    material_relation: >-
+      Part of PER-371: the accounts of the twelve trades. The 2024 BEA summary
+      supply and use tables folded into the twelve trades, with the rent that
+      home owners are counted as paying themselves cut out as owner-occupied
+      housing by the 2017 detail shares, and the jobs and payroll of each trade
+      from the version 2 jobs basis. Dense blocks of use, supply, make,
+      industry, jobs and split, in whole USD thousands, jobs or USD. Split
+      industries share by national published jobs. No money or hour is
+      allocated to a household, site or recipe, and no reader exists yet.
+  - name: national_opening_census_v13
+    format: json.gz
+    source_table: null
+    generator: rust/crates/babylon-persistence/tests/national_opening_census.rs
+    mode: register
+    rows: 316
+    sha256: 2fc8a6d0806f49e5e3143639435177f86fd0b461e2537cf730b53b3d803633fd
+    home: src/babylon/data/reference/economy/national_opening_census_v13.json.gz
+    material_relation: >-
+      Part of PER-371: the persons, jobs and wages of the twelve-trade opening,
+      read by the stage 5 builder. Gzipped JSON text, one row for each of the
+      316 parts of the 187 places: its people and workplaces by trade and
+      budget key, the seller each account is dealt, the foreign rows of every
+      domestic buyer and the crossing force. Written by the ignored test
+      record_national_opening_census; the test the_committed_census_is_the_opening_s
+      computes the census again and compares the decompressed text with it.
   - name: national_transport_reference_2024
     format: json.gz
     source_table: null

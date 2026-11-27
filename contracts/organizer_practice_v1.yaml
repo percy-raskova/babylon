@@ -6,10 +6,10 @@ meta:
   owners: [babylon-practice-contract, babylon-tick, babylon-persistence]
   scope: >-
     Captured Wayne collective, independent partner organizations, one workplace,
-    and an optional Wayne relief hearing
+    an optional Wayne relief hearing, and an optional county review contact
 
 encoding:
-  runtime_session_protocol_version: 21
+  runtime_session_protocol_version: 22
   outer: exact_ASCII_domain_then_NUL_then_canonical_UTF8_JSON
   version: config_and_state_schema_version_12_where_present
   current_domains: {config: "babylon.organizer-config.v11\0", state: "babylon.organizer-state.v10\0",
@@ -120,6 +120,19 @@ hearing:
   review_scope: authorized_agenda_only_no_attendance_or_debit_claim
   material_effect: no_appropriation_or_payment
   retention: canonical_journal_bound_to_nominal_material_world_hash
+
+review_contact:
+  authorizing_body: the county review configured for the campaign names its county and first session period
+  choice: reach_one_household_in_one_named_position_before_the_next_session
+  availability: refused_without_a_configured_review_or_before_the_first_session_period
+  cost: contact_hours_from_the_controlled_actor_only
+  standing_routine: replaced_for_the_period_like_any_other_ordinary_practice
+  intent: organize_with_control_parameter_9_and_a_position_target_digest
+  receipt: made_or_insufficient_time_the_session_records_whether_a_household_was_reached
+  roster: unknown_to_this_contract
+  snapshot: the_status_snapshot_gains_an_optional_county_review_projection_absent_without_a_county_review
+  preview: the_preview_gains_an_optional_contact_preview_present_only_for_a_review_contact_with_a_session_seen
+  session_line: the_whole_snapshot_travels_in_one_status_line_so_the_runtime_session_line_bound_is_1048576_bytes
 
 cooperation:
   initial_report_access: through_captured_initial_agreement_period

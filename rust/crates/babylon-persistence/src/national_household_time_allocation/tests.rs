@@ -307,6 +307,7 @@ fn allocation_provenance_refuses_different_county_or_workforce_capture() {
         crate::national_resident_workforce::national_resident_workforce_reference()
             .expect("the workforce reference fixture loads"),
         1_000,
+        None,
     )
     .expect("the fixture households fit the authored cohorts");
     for change_county in [true, false] {

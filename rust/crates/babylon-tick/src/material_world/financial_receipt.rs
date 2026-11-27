@@ -286,7 +286,7 @@ pub(super) fn validate(
     {
         return Err(MaterialWorldError::Wire);
     }
-    ordered(taxes, |r| r.payer)?;
+    ordered(taxes, |r| (r.payer, r.basis, r.public_recipient))?;
     ordered(contributions, |r| r.id)?;
     babylon_material_circuit::validate_distribution_receipts(distributions)
         .map_err(|_| MaterialWorldError::Wire)?;

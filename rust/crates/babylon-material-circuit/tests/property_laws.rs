@@ -73,6 +73,7 @@ fn allocation_catalog(
     unit: UnitId,
 ) -> MaterialCatalog {
     MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
@@ -242,6 +243,7 @@ fn production_catalog(
     process: ProcessId,
 ) -> MaterialCatalog {
     MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],

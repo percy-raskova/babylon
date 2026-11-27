@@ -1,6 +1,6 @@
 meta:
-  version: 1.96.0
-  updated: '2026-11-18'
+  version: 1.115.0
+  updated: '2026-11-26'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -25,6 +25,121 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR326_seven_choices_of_the_countrys_numbers:
+    title: Seven choices of the country's numbers, ruled; the benefit at each place's own cost; every place opens even
+    status: accepted
+    date: '2026-11-26'
+    file: ADR326_seven_choices_of_the_countrys_numbers.yaml
+  ADR325_the_countrys_numbers_before_the_pay_fight:
+    title: The country's numbers before the pay fight; three bands now; public provision outside two sellers' rules
+    status: accepted
+    date: '2026-11-25'
+    file: ADR325_the_countrys_numbers_before_the_pay_fight.yaml
+  ADR324_the_country_before_more_of_the_small_world:
+    title: The country before more of the small world; a country bench, then the country's opening; the pay fight after
+    status: accepted
+    date: '2026-11-24'
+    file: ADR324_the_country_before_more_of_the_small_world.yaml
+  ADR323_the_pay_fight:
+    title: The pay fight; real wins, the payer shown; measures only nudge; a call commands nobody; a win is a contract
+    status: accepted
+    date: '2026-11-24'
+    file: ADR323_the_pay_fight.yaml
+  ADR322_whose_hours:
+    title: Hours back by claim; the bribe against the clock; lending, rent, guarding store nothing; stored hours next
+    status: accepted
+    date: '2026-11-23'
+    file: ADR322_whose_hours.yaml
+  ADR321_the_six_rules_as_measured:
+    title: The six rules are built as measured; the test is scored where there is a fund; a rule turns on at any period
+    status: accepted
+    date: '2026-11-23'
+    file: ADR321_the_six_rules_as_measured.yaml
+  ADR320_screen_first_the_small_world_in_the_client:
+    title: Screen first; the small test economy runs in the client, drawn by its ties, with labelled shocks
+    status: accepted
+    date: '2026-11-23'
+    file: ADR320_screen_first_the_small_world_in_the_client.yaml
+  ADR319_a_shock_is_not_a_failure:
+    title: The test economy is judged by play; slumps end, scars stay, and a swing is not a failure
+    status: accepted
+    date: '2026-11-22'
+    file: ADR319_a_shock_is_not_a_failure.yaml
+  ADR318_who_carries_a_losing_workplace:
+    title: An owner covers a loss only while it is their best use; a bank carries a workplace by its capital, for a term
+    status: accepted
+    date: '2026-11-22'
+    file: ADR318_who_carries_a_losing_workplace.yaml
+  ADR317_field_and_particles:
+    title: The economy is drawn as a field of household groups, with hours and money as two streams and no rate
+    status: accepted
+    date: '2026-11-21'
+    file: ADR317_field_and_particles.yaml
+  ADR316_attributed_membership_is_served:
+    title: A node's membership of a hyperedge carries declared, typed values, and BSL reads and writes them
+    status: accepted
+    date: '2026-11-22'
+    file: ADR316_attributed_membership_is_served.yaml
+  ADR315_homes_rent_and_nation:
+    title: Rent has an author, a home is lost by the law's own steps, home values move, and nations are hyperedges
+    status: accepted
+    date: '2026-11-21'
+    file: ADR315_homes_rent_and_nation.yaml
+  ADR314_how_the_economy_adjusts:
+    title: The economy adjusts by prices, plans, credit, pay and capital that move, and comes back from a slump changed
+    status: accepted
+    date: '2026-11-21'
+    file: ADR314_how_the_economy_adjusts.yaml
+  ADR313_the_national_economy_opens_in_balance:
+    title: The national economy opens in balance, with twelve trades, observed pay, tiers and benefits
+    status: accepted
+    date: '2026-11-20'
+    file: ADR313_the_national_economy_opens_in_balance.yaml
+  ADR312_the_price_of_a_short_market:
+    title: In a short market the price paid rises until what buyers can pay for equals what there is
+    status: accepted
+    date: '2026-11-20'
+    file: ADR312_the_price_of_a_short_market.yaml
+  ADR311_host_policy_v14:
+    title: Babylon's Rust build budget rises to eight CPUs and eight Cargo jobs
+    status: accepted
+    date: '2026-11-19'
+    file: ADR311_host_policy_v14.yaml
+  ADR306_household_units_in_wayne:
+    title: Give each Wayne household unit its own account, cut once from its budget group at the opening
+    status: accepted
+    date: '2026-11-20'
+    file: ADR306_household_units_in_wayne.yaml
+  ADR305_rule_of_thirds_anchoring_law:
+    title: Adopt the rule of thirds as the anchoring law for household wealth and for who works
+    status: accepted
+    date: '2026-11-19'
+    file: ADR305_rule_of_thirds_anchoring_law.yaml
+  ADR304_city_pd_payroll:
+    title: 'Name the City PD''s payroll in the county''s books and separate its three numbers'
+    status: accepted
+    date: '2026-11-19'
+    file: ADR304_city_pd_payroll.yaml
+  ADR303_county_review_dispositions:
+    title: Fix what the County Review shows of class and nation, and the dispositions of the aid roll and graph payload
+    status: accepted
+    date: '2026-11-19'
+    file: ADR303_county_review_dispositions.yaml
+  ADR302_household_roster_and_counting:
+    title: Count Wayne households into positions by workplace, with declared exact splits
+    status: accepted
+    date: '2026-11-19'
+    file: ADR302_household_roster_and_counting.yaml
+  ADR301_county_review_session:
+    title: Hold a recurring County Review session in which Wayne households act on their own money
+    status: accepted
+    date: '2026-11-19'
+    file: ADR301_county_review_session.yaml
+  ADR300_amendment_am_no_imposed_functional_form:
+    title: Amendment AM writes the no-imposed-functional-form ruling into the Constitution
+    status: proposed
+    date: '2026-11-19'
+    file: ADR300_amendment_am_no_imposed_functional_form.yaml
   ADR299_wayne_relief_hearing:
     title: Give household groups distinct mandates at the Wayne relief hearing
     status: accepted
@@ -60,6 +175,11 @@ decisions:
     status: accepted
     date: '2026-11-06'
     file: ADR293_wayne_resource_allocations.yaml
+  ADR292_bounded_cargo_intermediates:
+    title: Babylon leases a single Cargo intermediate directory on the media mount
+    status: accepted
+    date: '2026-11-05'
+    file: ADR292_bounded_cargo_intermediates.yaml
   ADR291_first_state_opponent_observation:
     title: A City PD unit observes known public organizing through finite, receipted means
     status: accepted

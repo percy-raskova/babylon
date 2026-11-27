@@ -107,6 +107,13 @@
 //!   lane takes the next-free tag, `0x07` — a deviation from the plan's
 //!   literal number, not from its shape.
 //!
+//! - **Version 5** (Amendment AG clause (i), #653, membership attributes):
+//!   section `0x08` — `(hyperedge-id, member-id, qname, f64)` rows, sorted
+//!   by that key — exists, and is **elided when empty**, the rule every
+//!   section from `0x05` set. Every version-4 state encodes byte-identically
+//!   under version 5. The member id sits beside the hyperedge id rather than
+//!   inside section `0x04`: changing `0x04` would invalidate every stored hash.
+//!
 //! **Section tags are not decoration.** Without them a graph with one node
 //! and no edges could serialize identically to one with no nodes and one
 //! edge under some count arrangement; the tag makes each section's identity
@@ -146,6 +153,7 @@ const TAG_HYPEREDGES: u8 = 0x04;
 const TAG_EDGE_ATTRIBUTES: u8 = 0x05;
 const TAG_CURRENCY_ATTRIBUTES: u8 = 0x06;
 const TAG_HYPEREDGE_ATTRIBUTES: u8 = 0x07;
+const TAG_MEMBERSHIP_ATTRIBUTES: u8 = 0x08;
 
 /// The section tags are the whole basis for `TAG_NODES`/`TAG_EDGES`/… being
 /// distinguishable on the wire (module doc, "Section tags are not
@@ -164,6 +172,7 @@ fn tag_constants_are_pairwise_distinct() {
         TAG_EDGE_ATTRIBUTES,
         TAG_CURRENCY_ATTRIBUTES,
         TAG_HYPEREDGE_ATTRIBUTES,
+        TAG_MEMBERSHIP_ATTRIBUTES,
     ];
     let mut seen = HashSet::new();
     for tag in tags {
@@ -174,7 +183,10 @@ fn tag_constants_are_pairwise_distinct() {
     }
 }
 
-/// The canonical-layout version (module doc, "Layout versions"). **4** =
+/// The canonical-layout version (module doc, "Layout versions"). **5** = version 4's
+/// seven sections plus section `0x08` (membership attributes, Amendment AG
+/// clause (i), #653), **elided when empty**; every version-4 state hashes
+/// identically under version 5. **4** =
 /// version 3's six sections plus section `0x07` (hyperedge own-field
 /// attributes, Community port train Task 5/E2a — T3's Currency lane took
 /// `0x06` first, so this section is `0x07`), the seventh **elided when
@@ -185,7 +197,7 @@ fn tag_constants_are_pairwise_distinct() {
 /// payload. Bumping it is a contract event — the module doc's "Layout
 /// versions" section says what each version means and what may never be
 /// one.
-pub const CANONICAL_LAYOUT_VERSION: u32 = 4;
+pub const CANONICAL_LAYOUT_VERSION: u32 = 5;
 
 /// Accumulates the canonical encoding described in the module docs.
 ///
@@ -400,6 +412,32 @@ impl StateEncoder {
         Ok(())
     }
 
+    /// Section `0x08` (layout version 5 — the module doc's "Layout
+    /// versions"; Amendment AG clause (i), #653): one row per written
+    /// membership field, `u64 hyperedge ‖ u64 member ‖ str qname ‖ u64
+    /// value-bits`. `rows` must already be sorted ascending by
+    /// `(hyperedge, member, qname)`. **The elision decision is the
+    /// CALLER's**, as for `0x05`-`0x07`.
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] on overflow or a non-finite value.
+    pub fn write_membership_attributes(
+        &mut self,
+        rows: &[(HyperedgeId, NodeId, String, f64)],
+    ) -> Result<(), GraphError> {
+        self.push_count(TAG_MEMBERSHIP_ATTRIBUTES, rows.len())?;
+        for (id, member, qname, value) in rows {
+            self.bytes.extend_from_slice(&id.0.to_be_bytes());
+            self.bytes.extend_from_slice(&member.0.to_be_bytes());
+            self.push_str(qname)?;
+            self.push_f64(
+                *value,
+                &format!("attribute {qname} on the membership of {member:?} in {id:?}"),
+            )?;
+        }
+        Ok(())
+    }
+
     /// The canonical bytes, for a differential when two hashes disagree.
     ///
     /// A bare hash says only *that* two states differ; the bytes say where.
@@ -476,6 +514,11 @@ pub trait CanonicalState {
     /// forget to report, which is exactly the "reporting different facts"
     /// failure the one-encoder design exists to surface.
     fn all_hyperedge_attributes(&self) -> Vec<(HyperedgeId, String, f64)>;
+    /// Every membership-attribute row as `(hyperedge, member, qname, value)`,
+    /// in any order (Amendment AG clause (i), #653 — section `0x08`, layout
+    /// version 5). **REQUIRED, never defaulted**, by the same argument as the
+    /// listings above.
+    fn all_membership_attributes(&self) -> Vec<(HyperedgeId, NodeId, String, f64)>;
 
     /// The canonical encoding (module docs) — the ONLY place the sort and
     /// the `write_*` calls happen, for every store that ever implements
@@ -557,6 +600,18 @@ pub trait CanonicalState {
             encoder.write_hyperedge_attributes(&hyperedge_attributes)?;
         }
 
+        let mut membership_attributes = self.all_membership_attributes();
+        membership_attributes.sort_unstable_by(|a, b| {
+            a.0.cmp(&b.0)
+                .then_with(|| a.1.cmp(&b.1))
+                .then_with(|| a.2.cmp(&b.2))
+        });
+        // Section 0x08 (layout version 5): elided when empty, so a world
+        // with no membership field keeps every byte it had.
+        if !membership_attributes.is_empty() {
+            encoder.write_membership_attributes(&membership_attributes)?;
+        }
+
         Ok(encoder)
     }
 
@@ -588,6 +643,7 @@ mod tests {
         edge_attributes: Vec<(String, NodeId, NodeId, String, f64)>,
         currency_attributes: Vec<(NodeId, String, Currency)>,
         hyperedge_attributes: Vec<(HyperedgeId, String, f64)>,
+        membership_attributes: Vec<(HyperedgeId, NodeId, String, f64)>,
     }
 
     impl CanonicalState for Facts {
@@ -612,6 +668,9 @@ mod tests {
         fn all_hyperedge_attributes(&self) -> Vec<(HyperedgeId, String, f64)> {
             self.hyperedge_attributes.clone()
         }
+        fn all_membership_attributes(&self) -> Vec<(HyperedgeId, NodeId, String, f64)> {
+            self.membership_attributes.clone()
+        }
     }
 
     /// The provided `encode_state` reproduces the exact pinned byte array
@@ -633,6 +692,7 @@ mod tests {
             edge_attributes: vec![],
             currency_attributes: vec![],
             hyperedge_attributes: Vec::new(),
+            membership_attributes: Vec::new(),
         };
 
         // STYLE-EXCEPTION(EXC-05): manual byte-table alignment
@@ -758,6 +818,7 @@ mod tests {
                 ),
             ],
             hyperedge_attributes: Vec::new(),
+            membership_attributes: Vec::new(),
         };
 
         let scrambled = Facts {
@@ -813,6 +874,7 @@ mod tests {
                 ),
             ],
             hyperedge_attributes: Vec::new(),
+            membership_attributes: Vec::new(),
         };
 
         assert_eq!(
@@ -1098,6 +1160,7 @@ mod tests {
             edge_attributes: vec![],
             currency_attributes: vec![],
             hyperedge_attributes: Vec::new(),
+            membership_attributes: Vec::new(),
         };
         let mut manual = StateEncoder::new();
         manual
@@ -1136,6 +1199,7 @@ mod tests {
             edge_attributes: vec![],
             currency_attributes: vec![],
             hyperedge_attributes: Vec::new(),
+            membership_attributes: Vec::new(),
         };
         let with_attribute = Facts {
             edge_attributes: vec![("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)],
@@ -1147,6 +1211,7 @@ mod tests {
                 edge_attributes: vec![],
                 currency_attributes: vec![],
                 hyperedge_attributes: Vec::new(),
+                membership_attributes: Vec::new(),
             }
         };
 
@@ -1193,6 +1258,7 @@ mod tests {
             edge_attributes: vec![("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)],
             currency_attributes: vec![],
             hyperedge_attributes: Vec::new(),
+            membership_attributes: Vec::new(),
         };
         let mut manual = StateEncoder::new();
         manual
@@ -1235,6 +1301,7 @@ mod tests {
             edge_attributes: vec![("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)],
             currency_attributes: vec![],
             hyperedge_attributes: Vec::new(),
+            membership_attributes: Vec::new(),
         };
         let with_attribute = Facts {
             currency_attributes: vec![(NodeId(1), "m".to_owned(), Currency::from_micro_units(1))],
@@ -1246,6 +1313,7 @@ mod tests {
                 edge_attributes: bare.edge_attributes.clone(),
                 currency_attributes: vec![],
                 hyperedge_attributes: Vec::new(),
+                membership_attributes: Vec::new(),
             }
         };
 
@@ -1295,6 +1363,7 @@ mod tests {
             edge_attributes: vec![("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)],
             currency_attributes: vec![(NodeId(1), "m".to_owned(), Currency::from_micro_units(1))],
             hyperedge_attributes: Vec::new(),
+            membership_attributes: Vec::new(),
         };
         let mut manual = StateEncoder::new();
         manual
@@ -1344,6 +1413,7 @@ mod tests {
             edge_attributes: vec![("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)],
             currency_attributes: vec![],
             hyperedge_attributes: Vec::new(),
+            membership_attributes: Vec::new(),
         };
         let with_attribute = Facts {
             hyperedge_attributes: vec![(HyperedgeId(7), "community/heat".to_owned(), 0.5)],
@@ -1355,6 +1425,7 @@ mod tests {
                 edge_attributes: bare.edge_attributes.clone(),
                 currency_attributes: vec![],
                 hyperedge_attributes: Vec::new(),
+                membership_attributes: Vec::new(),
             }
         };
 
@@ -1406,12 +1477,14 @@ mod tests {
                 (HyperedgeId(7), "community/heat".to_owned(), 0.5),
                 (HyperedgeId(3), "community/zeta".to_owned(), 0.75),
             ],
+            membership_attributes: Vec::new(),
         };
         let reversed = Facts {
             hyperedge_attributes: vec![
                 (HyperedgeId(3), "community/zeta".to_owned(), 0.75),
                 (HyperedgeId(7), "community/heat".to_owned(), 0.5),
             ],
+            membership_attributes: Vec::new(),
             ..Facts {
                 nodes: base.nodes.clone(),
                 attributes: vec![],
@@ -1420,6 +1493,7 @@ mod tests {
                 edge_attributes: vec![],
                 currency_attributes: vec![],
                 hyperedge_attributes: Vec::new(),
+                membership_attributes: Vec::new(),
             }
         };
         assert_eq!(
@@ -1465,6 +1539,167 @@ mod tests {
         );
     }
 
+    fn membership_facts(rows: Vec<(HyperedgeId, NodeId, String, f64)>) -> Facts {
+        Facts {
+            nodes: vec![(NodeId(1), "c".to_owned())],
+            attributes: vec![(NodeId(1), "w".to_owned(), 1.0)],
+            edges: vec![("E".to_owned(), NodeId(1), NodeId(2), 0.5)],
+            hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
+            edge_attributes: Vec::new(),
+            currency_attributes: Vec::new(),
+            hyperedge_attributes: Vec::new(),
+            membership_attributes: rows,
+        }
+    }
+
+    /// An empty membership listing contributes zero bytes: the bytes equal
+    /// the pinned fixture's, written by hand without any eighth section.
+    #[test]
+    fn an_empty_membership_listing_writes_no_eighth_section_bytes() {
+        let facts = membership_facts(Vec::new());
+        let mut manual = StateEncoder::new();
+        manual
+            .write_nodes(&[(NodeId(1), "c".to_owned())])
+            .expect("the fixture graph writes its nodes");
+        manual
+            .write_attributes(&[(NodeId(1), "w".to_owned(), 1.0)])
+            .expect("the fixture graph writes its attributes");
+        manual
+            .write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
+            .expect("the fixture graph writes its edges");
+        manual
+            .write_hyperedges(&[(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])])
+            .expect("the fixture graph writes its hyperedges");
+        assert_eq!(
+            facts
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
+            manual.as_bytes(),
+            "an empty eighth listing must contribute ZERO bytes"
+        );
+    }
+
+    /// One row, hand-written: tag, count, the two ids, the qname, the bits.
+    #[test]
+    fn the_eighth_section_is_pinned_byte_for_byte() {
+        let mut encoder = StateEncoder::new();
+        encoder
+            .write_membership_attributes(&[(HyperedgeId(1), NodeId(2), "n/h".to_owned(), 1.0)])
+            .expect("the fixture row is finite");
+        // STYLE-EXCEPTION(EXC-05): manual byte-table alignment
+        #[rustfmt::skip]
+        let expected: &[u8] = &[
+            0x08,
+            0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+            0x00, 0x00, 0x00, 0x03, b'n', b'/', b'h',
+            0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+        assert_eq!(encoder.as_bytes(), expected);
+    }
+
+    /// The sort key is (hyperedge, member, qname), never the listing order.
+    #[test]
+    fn the_eighth_section_sorts_by_hyperedge_then_member_then_qname_regardless_of_listing_order() {
+        let sorted = vec![
+            (HyperedgeId(1), NodeId(2), "n/a".to_owned(), 1.0),
+            (HyperedgeId(1), NodeId(2), "n/b".to_owned(), 2.0),
+            (HyperedgeId(1), NodeId(3), "n/a".to_owned(), 3.0),
+            (HyperedgeId(2), NodeId(1), "n/a".to_owned(), 4.0),
+        ];
+        let scrambled = vec![
+            sorted[3].clone(),
+            sorted[1].clone(),
+            sorted[2].clone(),
+            sorted[0].clone(),
+        ];
+        let mut manual = StateEncoder::new();
+        manual
+            .write_membership_attributes(&sorted)
+            .expect("the fixture rows are finite");
+        let encoded = membership_facts(scrambled)
+            .encode_state()
+            .expect("the graph encodes its canonical state");
+        let tail = &encoded.as_bytes()[encoded.as_bytes().len() - manual.as_bytes().len()..];
+        assert_eq!(tail, manual.as_bytes());
+        assert_eq!(
+            membership_facts(sorted)
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
+            membership_facts(vec![
+                (HyperedgeId(2), NodeId(1), "n/a".to_owned(), 4.0),
+                (HyperedgeId(1), NodeId(3), "n/a".to_owned(), 3.0),
+                (HyperedgeId(1), NodeId(2), "n/b".to_owned(), 2.0),
+                (HyperedgeId(1), NodeId(2), "n/a".to_owned(), 1.0),
+            ])
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        );
+    }
+
+    /// One row moves the hash, and the eighth section trails the seven.
+    #[test]
+    fn a_single_membership_attribute_moves_the_hash_and_trails_the_seven_sections() {
+        let bare = membership_facts(Vec::new());
+        let with_row = membership_facts(vec![(HyperedgeId(7), NodeId(1), "n/h".to_owned(), 0.5)]);
+        assert_ne!(
+            bare.state_hash()
+                .expect("the fixture graph hashes its state"),
+            with_row
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
+            "one stored membership attribute must move the hash"
+        );
+        let bare_encoding = bare
+            .encode_state()
+            .expect("the graph encodes its canonical state");
+        let with_encoding = with_row
+            .encode_state()
+            .expect("the graph encodes its canonical state");
+        let prefix = bare_encoding.as_bytes();
+        assert_eq!(&with_encoding.as_bytes()[..prefix.len()], prefix);
+        assert_eq!(with_encoding.as_bytes()[prefix.len()], 0x08);
+    }
+
+    /// A removed member leaves no listing row, on either store.
+    #[test]
+    fn a_removed_member_leaves_no_listing_row() {
+        use crate::hypergraph_store::HypergraphStore;
+        use crate::memory::MemoryGraph;
+        use crate::substrate::GraphSubstrate;
+        fn check<G: GraphSubstrate + CanonicalState>(mut graph: G) {
+            let a = graph
+                .add_node("social_class")
+                .expect("the fixture adds a node with a registered kind");
+            let b = graph
+                .add_node("social_class")
+                .expect("the fixture adds a node with a registered kind");
+            let h = graph
+                .add_hyperedge("nation", &[a, b])
+                .expect("the fixture graph admits the authored hyperedge");
+            graph
+                .update_membership_attribute(h, a, "nation/households", 5.0)
+                .expect("the fixture membership carries the authored field");
+            graph
+                .update_membership_attribute(h, b, "nation/households", 6.0)
+                .expect("the fixture membership carries the authored field");
+            assert_eq!(graph.all_membership_attributes().len(), 2);
+            graph
+                .remove_node(a)
+                .expect("the fixture node exists before removal");
+            let rows = graph.all_membership_attributes();
+            assert!(
+                rows.iter().all(|(_, member, _, _)| *member != a),
+                "no row names the removed member: {rows:?}"
+            );
+            assert_eq!(rows.len(), 1);
+        }
+        check(MemoryGraph::new());
+        check(HypergraphStore::new());
+    }
+
     /// The layout version constant is the minted versioning convention
     /// (ADR198 R2: the elision rule is "documented and versioned" — there
     /// was no version anchor before T3, so T3 minted one). Pinning the
@@ -1474,9 +1709,9 @@ mod tests {
     fn the_canonical_layout_version_is_pinned() {
         assert_eq!(
             super::CANONICAL_LAYOUT_VERSION,
-            4,
-            "layout version 4 = version 3 (sections 0x01-0x06) + section 0x07 (hyperedge \
-             own-field attributes, elided when empty, Community port train Task 5/E2a) — \
+            5,
+            "layout version 5 = version 4 (sections 0x01-0x07) + section 0x08 (membership \
+             attributes, elided when empty, Amendment AG clause (i), #653) — \
              bumping this is a contract event, see the module doc's 'Layout versions'"
         );
     }

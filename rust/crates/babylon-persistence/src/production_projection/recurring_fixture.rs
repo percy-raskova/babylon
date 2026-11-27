@@ -278,6 +278,7 @@ fn labor_coefficients() -> Vec<LaborCoefficient> {
 )]
 pub(crate) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
     let catalog = babylon_material_circuit::MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2, 3]
             .into_iter()
@@ -313,6 +314,7 @@ pub(crate) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
             good_id: good(2),
             unit_id: units(),
             hours_per_unit: 1,
+            units: 1,
         }],
         company_portfolios: None,
         company_payouts: vec![],

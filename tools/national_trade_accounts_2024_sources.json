@@ -1,0 +1,39 @@
+{
+  "contract": "NationalTradeAccounts2024SourcesV1",
+  "vintage": 2024,
+  "issue": "PER-371",
+  "sources": [
+    {
+      "id": "use_summary",
+      "path": "input-output/supply-use/Use_Summary.xlsx",
+      "url": null,
+      "bytes": 1161293,
+      "sha256": "98dd61d7c2a8df7c9678b1ebff9015372ac5ed082df33f9b15e8d7bf9408f341",
+      "note": "BEA use table, summary level, sheets 2024 and 2017. Member of bea/SUPPLY-USE.zip on the data drive, same bytes; the url is not confirmed offline (no provenance beside the archive) and is null."
+    },
+    {
+      "id": "supply_summary",
+      "path": "input-output/supply-use/Supply_Summary.xlsx",
+      "url": null,
+      "bytes": 822838,
+      "sha256": "286c42547ff83b7756aae893829d8cb54825ec4ed9bdae60fda23ec7bdc634d9",
+      "note": "BEA supply table, summary level, sheet 2024. Member of bea/SUPPLY-USE.zip on the data drive, same bytes; the url is not confirmed offline (no provenance beside the archive) and is null."
+    },
+    {
+      "id": "use_detail",
+      "path": "input-output/supply-use/Use_SUT_Detail.xlsx",
+      "url": null,
+      "bytes": 2121639,
+      "sha256": "07aa2a21151e78ec1462c8f48142d274c153d90aff07bd797e07c6bc8486911e",
+      "note": "BEA use table, detail level, sheet 2017. Member of bea/SUPPLY-USE.zip on the data drive, same bytes; the url is not confirmed offline (no provenance beside the archive) and is null."
+    },
+    {
+      "id": "supply_detail",
+      "path": "input-output/supply-use/Supply_Detail.xlsx",
+      "url": null,
+      "bytes": 1610518,
+      "sha256": "7a3a403f7a7e8335e61776c1da6c423409d54090acaee597bbae738fa9a6703e",
+      "note": "BEA supply table, detail level, sheet 2017. Member of bea/SUPPLY-USE.zip on the data drive, same bytes; the url is not confirmed offline (no provenance beside the archive) and is null."
+    }
+  ]
+}

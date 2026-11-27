@@ -18,16 +18,19 @@ pub enum SurfaceId {
     ObserverShell,
     ObserverProduction,
     OrganizerWorkspace,
+    /// The small test economy's own scene, opened by `--small-world`.
+    SmallWorld,
 }
 
 impl SurfaceId {
     /// Complete closed set used by the manifest-exhaustiveness sentinel.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::TitleLockup,
         Self::CountyDossier,
         Self::ObserverShell,
         Self::ObserverProduction,
         Self::OrganizerWorkspace,
+        Self::SmallWorld,
     ];
 }
 
@@ -39,6 +42,7 @@ impl fmt::Display for SurfaceId {
             Self::ObserverShell => "observer-shell",
             Self::ObserverProduction => "observer-production",
             Self::OrganizerWorkspace => "organizer-workspace",
+            Self::SmallWorld => "small-world",
         })
     }
 }
@@ -273,6 +277,14 @@ const fn admin_surface(
     }
 }
 
+const SMALL_WORLD_SIGNALS: &[&str] = &[
+    "the test economy's workplaces, household groups and sets",
+    "the work, goods and payments of the period shown",
+    "the shocks struck and when",
+];
+const SMALL_WORLD_UNCERTAINTY: &[&str] =
+    &["the hours of goods from the opening stock were never measured"];
+
 /// The Investigate action's honest unavailability reason. Spelled identically
 /// in `ui::dossier_compose::INVESTIGATE_UNAVAILABLE_REASON` (the R6
 /// placeholder seal); the contract test pins both spellings to each other so
@@ -316,12 +328,12 @@ pub const SHIPPED_SURFACE_MANIFEST: &[DecisionSurfaceContract] = &[
     gameplay_surface(
         SurfaceId::OrganizerWorkspace,
         "How should our organization use its time, and whose demands can our partners take to the relief hearing?",
-        &["earned period-specific reports", "committed organizer time", "attributed proposals and objections", "dated notice, signatory households and authorized delegates", "accepted ruling and actual practice receipts"],
-        &["partner cooperation is independent", "speaking authority can be narrower than settlement authority", "maintenance recovery is not political success", "report access expires", "missing knowledge is not zero"],
+        &["earned period-specific reports", "committed organizer time", "attributed proposals and objections", "dated notice, signatory households and authorized delegates", "accepted ruling and actual practice receipts", "the county's lines, money for relief, roll and list order", "who works in each band", "the units paid and unpaid at each session", "a position's own figures once a household there is reached"],
+        &["partner cooperation is independent", "speaking authority can be narrower than settlement authority", "maintenance recovery is not political success", "report access expires", "missing knowledge is not zero", "a position's amounts are hidden until a household there is reached", "the preview is the last close seen, not the period the session will use", "nation, legal status, homes and wealth are not in this slice"],
         &["only the player's actor-scoped organizer projection", "historical views cannot submit", "local drafts never execute"],
-        &[SurfaceAction::available("inquiry"), SurfaceAction::available("reinforce"), SurfaceAction::available("hold"), SurfaceAction::available("configure-standing-work"), SurfaceAction::available("invite-to-relief-hearing")],
-        &["immutable accepted commitment", "resolving-period time and partner response", "earned report provenance", "resumed or paused standing work", "committed testimony and the next review agenda"],
-        &["earned workplace report", "practice receipt", "county/<geoid>"],
+        &[SurfaceAction::available("inquiry"), SurfaceAction::available("reinforce"), SurfaceAction::available("hold"), SurfaceAction::available("configure-standing-work"), SurfaceAction::available("invite-to-relief-hearing"), SurfaceAction::available("review-contact")],
+        &["immutable accepted commitment", "resolving-period time and partner response", "earned report provenance", "resumed or paused standing work", "committed testimony and the next review agenda", "the county session record and its list", "the contact's receipt and the session that follows it", "the food run's receipt"],
+        &["earned workplace report", "practice receipt", "county/<geoid>", "county review session"],
     ),
     DecisionSurfaceContract {
         id: SurfaceId::ObserverProduction,
@@ -376,6 +388,11 @@ pub const SHIPPED_SURFACE_MANIFEST: &[DecisionSurfaceContract] = &[
         &["county/<geoid>", "place/<geoid>"],
     ),
     admin_surface(SurfaceId::TitleLockup, &["application identity"], NONE),
+    admin_surface(
+        SurfaceId::SmallWorld,
+        SMALL_WORLD_SIGNALS,
+        SMALL_WORLD_UNCERTAINTY,
+    ),
 ];
 
 /// Resolves one surface id to its sole manifest declaration.
@@ -452,6 +469,16 @@ mod tests {
             SurfaceAction::available("survey"),
         ];
         assert!(gameplay_contract(MIXED).satisfies_gameplay_gate());
+    }
+
+    #[test]
+    fn the_small_world_row_is_an_unfogged_admin_surface_outside_every_gate() {
+        let row = contract_for(SurfaceId::SmallWorld);
+        assert!(row.validate().is_ok());
+        assert_eq!(row.role, DecisionSurfaceRole::AdminDebug);
+        assert!(!row.satisfies_gameplay_gate());
+        assert_eq!(row.fog_requirements, UNFOGGED_ADMIN);
+        assert_eq!(SurfaceId::SmallWorld.to_string(), "small-world");
     }
 
     #[test]

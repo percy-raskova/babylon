@@ -24,8 +24,9 @@
 //! [`conformance::run_substrate_conformance`] is written against; both
 //! stores pass that same suite.
 //!
-//! **The trait is the insulation, not either store.** `GraphSubstrate` is
-//! unwidened by the swap — 14 methods, exactly as ratified — and a sibling
+//! **The trait is the insulation, not either store.** `GraphSubstrate` got
+//! no method from the swap (the hyperedge lane and the
+//! attributed-membership lane, #653, added theirs on their own steps) — and a sibling
 //! trait, [`state_hash::CanonicalState`], carries the one shared canonical
 //! encoding both stores implement. Depend on `GraphSubstrate` (+
 //! `CanonicalState` where the canonical byte encoding is needed); construct

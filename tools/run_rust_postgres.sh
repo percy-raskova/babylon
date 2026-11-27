@@ -6,7 +6,7 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly REPO_ROOT
 readonly IMAGE="babylon-postgres-runtime:local"
 readonly PREBUILT_IMAGE_ID="${BABYLON_POSTGRES_IMAGE_ID:-}"
-export CARGO_BUILD_JOBS=4
+export CARGO_BUILD_JOBS=8
 readonly CARGO_BUILD_JOBS
 # Internal handshake for the ignored Rust test. This runner forwards it only
 # after it proves exact ownership of the random-canary container below.
@@ -131,7 +131,7 @@ if [ "${BABYLON_POSTGRES_IMAGE_ID+x}" = x ] &&
 fi
 
 case "$LIVE_FOCUS" in
-  runtime_smoke | session_progress | reference_integrity | runtime | runtime_open | territory | archive | archive_publication | reader | money_journal | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | city_pd | city_pd_witness | city_pd_pair | city_pd_atomic | city_pd_history | city_pd_nonwitness | client | national_storage | organizer_allocation_atomic) ;;
+  runtime_smoke | session_progress | reference_integrity | runtime | runtime_open | territory | archive | archive_publication | reader | money_journal | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | city_pd | city_pd_witness | city_pd_pair | city_pd_atomic | city_pd_history | city_pd_nonwitness | county_review | client | national_storage | organizer_allocation_atomic) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
 
@@ -610,13 +610,18 @@ if [ "$status" -eq 0 ]; then
       run_phase runtime 600 cargo test -p babylon-persistence --lib \
         runtime::live_tests::live_ --locked -- --nocapture --ignored --test-threads=1 || status=$?
       if [ "$status" -eq 0 ]; then
+        # The event storage controls clone their own database from the runtime template.
+        run_phase event_storage 600 cargo test -p babylon-persistence --lib \
+          event_storage::store:: --locked -- --nocapture --ignored --test-threads=1 || status=$?
+      fi
+      if [ "$status" -eq 0 ]; then
         run_phase territory_storage 600 cargo test -p babylon-persistence --lib \
           runtime::live_tests::territory_controls:: --locked -- --nocapture --ignored --test-threads=1 || status=$?
       fi
       if [ "$status" -eq 0 ]; then
         run_phase material_writer_bounds 180 env BABYLON_RUNTIME_DSN="$BOOTSTRAP_DSN" \
           cargo test -p babylon-persistence --lib \
-          material_runtime::writer_bounds_tests::live_bounded_writer_verifies_authority_and_timeouts_in_read_only_transaction \
+          material_runtime::runtime::writer_bounds_tests::live_bounded_writer_verifies_authority_and_timeouts_in_read_only_transaction \
           --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
       fi
       if [ "$status" -eq 0 ]; then
@@ -709,7 +714,7 @@ if [ "$status" -eq 0 ]; then
         held_staffing_history_survives_advance_reopen_and_does_not_mutate_authority \
         persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arrival \
         live_material_observer_preserves_history_and_denies_preview_blob_authority \
-        graph_reads_resolve_exact_ids_with_prior_campaign_statistics || status=$?
+        graph_reads_resolve_exact_ids_at_a_period_its_statistics_have_not_seen || status=$?
       ;;
     reader)
       for reader_suite in reader_role_live observer_material_live; do
@@ -719,10 +724,18 @@ if [ "$status" -eq 0 ]; then
         run_phase "$reader_suite" 600 cargo test -p babylon-persistence --test "$reader_suite" \
           --locked -- --nocapture --ignored --skip statewide:: --skip statewide_qualified:: \
           --skip staffing_history::production_history --skip organizer:: --skip money_journal:: --skip inspection_copy:: \
-          --skip state_opponent_history:: --skip state_opponent_nonwitness:: \
+          --skip state_opponent_history:: --skip state_opponent_nonwitness:: --skip county_review_playthroughs:: \
+          --skip support::live_michigan_all_county_cards_keep_public_source_and_quiet_restart_freshness \
           --test-threads="$reader_threads" || status=$?
         [ "$status" -eq 0 ] || break
       done
+      # The all-county Michigan cards proof gets its own deadline. Once the two repaired
+      # reader tests ran to their end, the ordinary reader deadline left it unfinished.
+      if [ "$status" -eq 0 ]; then
+        run_phase michigan_county_cards 600 cargo test -p babylon-persistence --test observer_material_live \
+          support::live_michigan_all_county_cards_keep_public_source_and_quiet_restart_freshness \
+          --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+      fi
       # Full-prefix history corruption/reopen proofs get their own deadline.
       # Sharing the ordinary reader deadline left the 16-period proof unfinished.
       if [ "$status" -eq 0 ]; then
@@ -830,6 +843,19 @@ if [ "$status" -eq 0 ]; then
       if [ "$status" -eq 0 ]; then
         run_phase city_pd_nonwitness 900 cargo test -p babylon-persistence --test observer_material_live "$nonwitness_test" --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
       fi
+      ;;
+    county_review)
+      # Local only: four recorded playthroughs and a replay, about 40 minutes, one national
+      # runtime at a time (a national runtime peaks near 4 GB). BABYLON_COUNTY_REVIEW_TEST=
+      # county_review_playthroughs_smoke runs the short driver check (about 10 minutes).
+      county_test="${BABYLON_COUNTY_REVIEW_TEST-county_review_playthroughs}"
+      case "$county_test" in
+        county_review_playthroughs | county_review_playthroughs_smoke) ;;
+        *) die "unsupported county review test: $county_test" ;;
+      esac
+      run_phase county_review_playthroughs 3600 cargo test -p babylon-persistence \
+        --test observer_material_live "county_review_playthroughs::$county_test" \
+        --locked -- --ignored --nocapture --exact --test-threads=1 || status=$?
       ;;
     client)
       run_phase client 900 cargo test -p babylon-client --test dossier_cli_live \

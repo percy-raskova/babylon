@@ -45,7 +45,7 @@ use babylon_graph::stable_element::StableElementResolver;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngSeedContext};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Fixed deterministic V1 namespace for these one-shot conformance drivers.
 /// They contain no finite kernel, so the byte-identical state-hash theorem
@@ -85,6 +85,7 @@ fn field(ty: BslType, kind: FieldKind) -> FieldDecl {
 
 fn types() -> TypeEnv {
     TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: HashMap::from([
             (
                 "social-class/wages".to_owned(),
@@ -366,6 +367,7 @@ const EXPR_RULE: &str = r#"
 
 fn expr_registries() -> Registries {
     let declared = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: HashMap::from([
             (
                 "social-class/wealth".to_owned(),

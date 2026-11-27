@@ -351,6 +351,7 @@ fn new_national_developments_pause_with_short_feedback_and_retain_full_dated_fac
             source: None,
         };
         let snapshot = OrganizerSnapshot {
+            county_review: None,
             view: row.view,
             collection_resolutions: row.collection_resolutions,
             aid_resolutions: row.aid_resolutions,

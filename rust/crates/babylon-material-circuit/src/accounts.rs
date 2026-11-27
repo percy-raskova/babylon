@@ -505,6 +505,51 @@ impl MonetaryBook {
         self.resolve_purchase(order, cumulative_refunded, PurchaseResolution::Refunded)
     }
 
+    /// Take back units of a purchase that no one will ever ship: the principal shrinks by `units`
+    /// and their money returns to the buyer. A principal cancelled whole leaves the book.
+    /// # Errors
+    /// Refuses unknown orders, zero units, or more units than remain open.
+    pub fn cancel_purchase_units(
+        &mut self,
+        order: OutboundOrderId,
+        units: u64,
+    ) -> Result<PurchaseMovementReceipt, MonetaryError> {
+        let mut row = self.purchase(order)?.clone();
+        let open = row
+            .quantity
+            .checked_sub(row.closed_quantity()?)
+            .ok_or(MonetaryError::QuantityExceedsPrincipal)?;
+        if units == 0 {
+            return Err(MonetaryError::ZeroQuantity);
+        }
+        if units > open {
+            return Err(MonetaryError::QuantityExceedsPrincipal);
+        }
+        let amount = quantity_amount(units, row.unit_price)?;
+        let buyer = row.buyer;
+        let cash = add(self.cash(buyer)?, amount)?;
+        let transfer = transfer_receipt(
+            MoneyTransferPurpose::PurchaseRefund(order),
+            MoneyLocation::PurchaseReserve(order),
+            MoneyLocation::Cash(buyer),
+            amount,
+        )?;
+        row.quantity -= units;
+        if row.quantity == 0 {
+            self.purchases.remove(&order);
+        } else {
+            row.validate()?;
+            self.purchases.insert(order, row);
+        }
+        self.accounts.insert(buyer, cash);
+        Ok(PurchaseMovementReceipt {
+            order,
+            quantity: units,
+            cumulative_quantity: units,
+            transfer,
+        })
+    }
+
     fn resolve_purchase(
         &mut self,
         order: OutboundOrderId,

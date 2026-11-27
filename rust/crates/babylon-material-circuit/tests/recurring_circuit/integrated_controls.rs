@@ -336,6 +336,7 @@ fn foreign_trade_opening() -> (MaterialCatalog, MaterialCircuitState) {
                     good_id: crate::good(g),
                     unit_id: crate::units(),
                     hours_per_unit: 1,
+                    units: 1,
                 }),
         );
     catalog.supplier_routes = [(1, 2, 1), (2, 1, 2)]

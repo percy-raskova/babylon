@@ -133,7 +133,10 @@ pub(super) fn ordered_rows<T, K: Ord>(
     Ok(())
 }
 
-pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<CircuitAccounting, MaterialCircuitError> {
+pub(super) fn decode(
+    cursor: &mut Cursor<'_>,
+    extended: bool,
+) -> Result<CircuitAccounting, MaterialCircuitError> {
     match cursor.u8()? {
         0 => return Ok(CircuitAccounting::PhysicalControl),
         1 => {}
@@ -211,7 +214,7 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<CircuitAccounting, Mater
     ordered_rows(&member_labor, |row| (row.period, row.member_id))?;
     let recurring = super::recurring::decode(cursor)?;
     let costs = super::valuation::decode(cursor)?;
-    let financial = super::financial::decode(cursor)?;
+    let financial = super::financial::decode(cursor, extended)?;
     let household_time = super::household_time::decode(cursor)?;
     let aid = super::aid::decode(cursor)?;
     Ok(CircuitAccounting::Monetary(Box::new(MonetaryCircuit {

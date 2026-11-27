@@ -1,8 +1,8 @@
 //! Versioned, disposable cache of derived labor. The authenticated material register owns all
 //! physical quantities and identities. Payload positions follow their canonical sorted order.
-use super::book::{Book, Position, Result};
-use super::model::{LaborBasis, LaborNode, RecordedLaborError};
+use super::{LaborBasis, LaborNode, RecordedLaborError, Result};
 use babylon_kernel::content_digest;
+use babylon_recorded_labor::{Book, Position};
 use sha2::Sha256;
 use std::collections::BTreeMap;
 

@@ -7,6 +7,48 @@ use crate::OrderId;
 
 pub(super) type Groups = BTreeMap<FreightResourceKey, Vec<FreightRequest>>;
 
+/// The resource a request uses for `quantity` units: `ceil(quantity x resource_per_unit / block_units)`.
+fn used_by(quantity: u64, per_unit: u64, block: u64) -> Result<u128, MaterialCircuitError> {
+    if block == 0 {
+        return Err(MaterialCircuitError::FreightInvariant);
+    }
+    let total = u128::from(quantity)
+        .checked_mul(u128::from(per_unit))
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    Ok(total.div_ceil(u128::from(block)))
+}
+
+/// The most units that `resource` of a resource serves: `floor(resource x block / per_unit)`.
+fn units_served(resource: u128, per_unit: u64, block: u64) -> Result<u128, MaterialCircuitError> {
+    resource
+        .checked_mul(u128::from(block))
+        .ok_or(MaterialCircuitError::Arithmetic)?
+        .checked_div(u128::from(per_unit))
+        .ok_or(MaterialCircuitError::FreightInvariant)
+}
+
+/// What a request's whole quantity uses of its resource.
+pub(super) fn usage(request: &FreightRequest) -> Result<u128, MaterialCircuitError> {
+    used_by(
+        request.requested,
+        request.resource_per_unit,
+        request.block_units,
+    )
+}
+
+/// The units of a request that `share` of its resource serves, at most the request.
+pub(super) fn units_within(
+    request: &FreightRequest,
+    share: u64,
+) -> Result<u64, MaterialCircuitError> {
+    let units = units_served(
+        u128::from(share),
+        request.resource_per_unit,
+        request.block_units,
+    )?;
+    Ok(u64::try_from(units.min(u128::from(request.requested))).unwrap_or(request.requested))
+}
+
 /// Every repeated membership incurs its actual coefficient. A request's native
 /// bound cannot change between memberships of the same resource.
 pub(super) fn aggregate(groups: &Groups) -> Result<Groups, MaterialCircuitError> {
@@ -15,11 +57,14 @@ pub(super) fn aggregate(groups: &Groups) -> Result<Groups, MaterialCircuitError>
         .map(|(key, requests)| {
             let mut merged: BTreeMap<usize, FreightRequest> = BTreeMap::new();
             for request in requests {
-                if request.resource_per_unit == 0 {
+                if request.resource_per_unit == 0 || request.block_units == 0 {
                     return Err(MaterialCircuitError::FreightInvariant);
                 }
                 if let Some(row) = merged.get_mut(&request.order_index) {
-                    if row.requested != request.requested {
+                    if row.requested != request.requested
+                        || row.block_units != 1
+                        || request.block_units != 1
+                    {
                         return Err(MaterialCircuitError::FreightInvariant);
                     }
                     row.resource_per_unit = row
@@ -45,7 +90,8 @@ pub(super) fn identity_order(identities: &[(OrderId, u8)]) -> Vec<usize> {
 
 pub(super) struct Matrix {
     available: Vec<u64>,
-    cuts: Vec<Vec<(usize, u64)>>,
+    /// For each order, each resource it draws on, its coefficient and the block of units it is given for.
+    cuts: Vec<Vec<(usize, u64, u64)>>,
     bounds: Vec<u64>,
 }
 impl Matrix {
@@ -62,26 +108,28 @@ impl Matrix {
         for (resource, (key, requests)) in groups.iter().enumerate() {
             matrix.available.push(availability(*key)?);
             for request in requests {
-                if request.resource_per_unit == 0 {
+                if request.resource_per_unit == 0 || request.block_units == 0 {
                     return Err(MaterialCircuitError::FreightInvariant);
                 }
                 let cuts = matrix
                     .cuts
                     .get_mut(request.order_index)
                     .ok_or(MaterialCircuitError::FreightInvariant)?;
-                cuts.push((resource, request.resource_per_unit));
+                cuts.push((resource, request.resource_per_unit, request.block_units));
             }
         }
         Ok(matrix)
     }
     /// Independent physical ceiling, excluding competition and handling labor.
-    pub(super) fn ceilings(&self) -> Vec<u64> {
+    pub(super) fn ceilings(&self) -> Result<Vec<u64>, MaterialCircuitError> {
         self.cuts
             .iter()
             .zip(&self.bounds)
             .map(|(cuts, bound)| {
-                cuts.iter()
-                    .fold(*bound, |n, (r, c)| n.min(self.available[*r] / c))
+                cuts.iter().try_fold(*bound, |n, (r, c, b)| {
+                    let served = units_served(u128::from(self.available[*r]), *c, *b)?;
+                    Ok(n.min(u64::try_from(served).unwrap_or(u64::MAX)))
+                })
             })
             .collect()
     }
@@ -94,9 +142,9 @@ impl Matrix {
             if quantity > bound || (*quantity > 0 && cuts.is_empty()) {
                 return Err(MaterialCircuitError::FreightInvariant);
             }
-            for (r, c) in cuts {
+            for (r, c, b) in cuts {
                 used[*r] = used[*r]
-                    .checked_add(u128::from(*quantity) * u128::from(*c))
+                    .checked_add(used_by(*quantity, *c, *b)?)
                     .ok_or(MaterialCircuitError::Arithmetic)?;
             }
         }
@@ -147,22 +195,32 @@ impl Matrix {
             if self.cuts[i].is_empty() {
                 continue;
             }
-            let extra = self.cuts[i]
-                .iter()
-                .fold(self.bounds[i] - allocations[i], |n, (r, c)| {
-                    n.min(remaining[*r] / c)
-                });
+            // The most units this order can reach, given what it already holds of each resource and what
+            // is left: `floor((held + remaining) x block / coefficient)`, then less what it has.
+            let mut reach = self.bounds[i];
+            for (r, c, b) in &self.cuts[i] {
+                let held = used_by(allocations[i], *c, *b)?;
+                let room = held
+                    .checked_add(u128::from(remaining[*r]))
+                    .ok_or(MaterialCircuitError::Arithmetic)?;
+                let served = units_served(room, *c, *b)?;
+                reach = reach.min(u64::try_from(served).unwrap_or(u64::MAX));
+            }
+            let extra = reach.saturating_sub(allocations[i]);
+            let before = allocations[i];
             allocations[i] = allocations[i]
                 .checked_add(extra)
                 .ok_or(MaterialCircuitError::Arithmetic)?;
-            for (r, c) in &self.cuts[i] {
-                remaining[*r] = remaining[*r]
-                    .checked_sub(
-                        extra
-                            .checked_mul(*c)
-                            .ok_or(MaterialCircuitError::Arithmetic)?,
-                    )
+            for (r, c, b) in &self.cuts[i] {
+                let spent = used_by(allocations[i], *c, *b)?
+                    .checked_sub(used_by(before, *c, *b)?)
                     .ok_or(MaterialCircuitError::FreightInvariant)?;
+                remaining[*r] = u64::try_from(
+                    u128::from(remaining[*r])
+                        .checked_sub(spent)
+                        .ok_or(MaterialCircuitError::FreightInvariant)?,
+                )
+                .map_err(|_| MaterialCircuitError::Arithmetic)?;
             }
         }
         Ok(())
@@ -178,12 +236,16 @@ mod controls {
             order_index: index,
             requested: bound,
             resource_per_unit: coefficient,
+            block_units: 1,
         }
     }
     fn matrix(available: Vec<u64>, cuts: Vec<Vec<(usize, u64)>>, bounds: Vec<u64>) -> Matrix {
         Matrix {
             available,
-            cuts,
+            cuts: cuts
+                .into_iter()
+                .map(|row| row.into_iter().map(|(r, c)| (r, c, 1)).collect())
+                .collect(),
             bounds,
         }
     }
@@ -275,7 +337,7 @@ mod controls {
                     .residuals(&actual)
                     .expect("the fixture call `residuals` succeeds for the authored inputs");
                 for (i, cuts) in matrix.cuts.iter().enumerate() {
-                    assert!(actual[i] == bound || cuts.iter().any(|(r, c)| remaining[*r] < *c));
+                    assert!(actual[i] == bound || cuts.iter().any(|(r, c, _)| remaining[*r] < *c));
                 }
             }
         }

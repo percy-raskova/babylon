@@ -29,7 +29,7 @@ _POLICY_KEYS: Final = (
     "CODEX_RUST_HOST_POLICY_VERSION",
     "CODEX_RUST_SCCACHE_POLICY_KEY",
     "CODEX_RUST_SCCACHE_VERSION",
-    "CODEX_RUST_MAX_JOBS",
+    "CODEX_RUST_BABYLON_MAX_JOBS",
     "CODEX_RUST_PARENT_SLICE",
     "CODEX_RUST_BABYLON_SLICE",
     "CODEX_RUST_BABYLON_TARGET_SUBDIR",
@@ -431,7 +431,7 @@ def _collect_host_policy(repo: Path) -> dict[str, object]:
     return {
         "available": True,
         "policy_version": _positive_policy_integer(assignments, "CODEX_RUST_HOST_POLICY_VERSION"),
-        "max_jobs": _positive_policy_integer(assignments, "CODEX_RUST_MAX_JOBS"),
+        "max_jobs": _positive_policy_integer(assignments, "CODEX_RUST_BABYLON_MAX_JOBS"),
         "sccache_policy_key": assignments["CODEX_RUST_SCCACHE_POLICY_KEY"],
         "sccache_version": assignments["CODEX_RUST_SCCACHE_VERSION"],
         "target_subdir": assignments["CODEX_RUST_BABYLON_TARGET_SUBDIR"],

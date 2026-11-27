@@ -483,6 +483,13 @@ pub enum StableIdentityError {
         /// Stable-state section containing the duplicate.
         section: &'static str,
     },
+    /// A membership-value row named a node that is not in its hyperedge's member list.
+    MembershipNotInHyperedge {
+        /// Stable hyperedge local name.
+        hyperedge_local_name: String,
+        /// Stable member node local name.
+        member_local_name: String,
+    },
     /// One node field appeared in both the f64 and Currency lanes.
     NumericLaneCollision {
         /// Stable node local name.
@@ -1471,6 +1478,9 @@ mod tests {
         }
 
         fn all_hyperedge_attributes(&self) -> Vec<(HyperedgeId, String, f64)> {
+            Vec::new()
+        }
+        fn all_membership_attributes(&self) -> Vec<(HyperedgeId, NodeId, String, f64)> {
             Vec::new()
         }
     }

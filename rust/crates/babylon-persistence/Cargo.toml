@@ -16,6 +16,7 @@ babylon-graph = { path = "../babylon-graph" }
 babylon-material-circuit = { path = "../babylon-material-circuit" }
 babylon-kernel = { path = "../babylon-kernel" }
 babylon-practice-contract = { path = "../babylon-practice-contract" }
+babylon-recorded-labor = { path = "../babylon-recorded-labor" }
 babylon-tick = { path = "../babylon-tick" }
 fallible-iterator = "0.2"
 flate2 = "1"

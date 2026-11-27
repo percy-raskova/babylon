@@ -950,9 +950,11 @@ pub fn encode_effect_signature(
         EffectSignature::OrganizerProducts => writer.push(0x07)?,
         EffectSignature::OrganizerPractice => writer.push(0x08)?,
         EffectSignature::CityPdObserve => writer.push(0x09)?,
+        EffectSignature::CountyReview => writer.push(0x0a)?,
         EffectSignature::NodeField(qname) => encode_effect_field(0x01, qname, &mut writer)?,
         EffectSignature::EdgeField(qname) => encode_effect_field(0x02, qname, &mut writer)?,
         EffectSignature::HyperedgeField(qname) => encode_effect_field(0x03, qname, &mut writer)?,
+        EffectSignature::MembershipField(qname) => encode_effect_field(0x0b, qname, &mut writer)?,
         EffectSignature::Event(event) => {
             let canonical = canonical_event_name(event)?;
             writer.push(0x04)?;
@@ -1166,6 +1168,23 @@ mod tests {
     };
     use crate::evaluator::Value;
     use crate::types::{BslType, EnumRegistry, EnumTypeId, FieldDecl, FieldKind};
+
+    /// A write to a membership's field is its own motion: tag `0x0b`, the next one unused
+    /// (`0x05` is `Shape`, `0x06` to `0x0a` are taken), then the field's qname as the other
+    /// three field signatures carry theirs. No content uses it, so no content digest moves.
+    #[test]
+    fn update_membership_signature_encodes_tag_0x0b() {
+        let mut bytes = Vec::new();
+        super::encode_effect_signature(
+            &crate::causal_contract::EffectSignature::MembershipField("nation/share".to_owned()),
+            &mut bytes,
+        )
+        .expect("a membership field signature encodes");
+        let mut expected = vec![0x0b];
+        expected.extend_from_slice(&12_u32.to_be_bytes());
+        expected.extend_from_slice(b"nation/share");
+        assert_eq!(bytes, expected);
+    }
 
     fn empty_resolver() -> StableElementResolver {
         StableElementResolver::seal(

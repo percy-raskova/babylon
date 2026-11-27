@@ -34,6 +34,7 @@ pub(super) fn assert_people(
         national_resident_workforce::national_resident_workforce_reference()
             .expect("the workforce reference fixture loads"),
         policy.households.private_owner_households_bps,
+        policy.households.next_forty_households_bps,
     )
     .expect("the fixture households fit the authored cohorts");
     let households: BTreeMap<_, _> = opening

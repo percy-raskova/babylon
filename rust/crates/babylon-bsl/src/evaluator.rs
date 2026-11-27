@@ -180,6 +180,10 @@ pub enum EvalCode {
     /// `E-EVAL-037` — a metric the provider produced no value for (§2.11).
     /// Absence is never a zero.
     MetricValueAbsent,
+    /// `E-EVAL-038` — a `membership-field-of` (§2.10, D81) over a pair that
+    /// is no membership: the node is not a member of the hyperedge. Never a
+    /// default value and never an absent read.
+    NotAMembership,
     /// `E-EVAL-040` — the fuel meter reached or passed zero.
     FuelExhausted,
     /// `E-EVAL-039` — the `floor` intrinsic's argument is outside its
@@ -245,6 +249,7 @@ impl EvalCode {
             Self::UnhydratedCarrier => "E-EVAL-035",
             Self::MetricDomainMismatch => "E-EVAL-036",
             Self::MetricValueAbsent => "E-EVAL-037",
+            Self::NotAMembership => "E-EVAL-038",
             Self::FuelExhausted => "E-EVAL-040",
             Self::DemotionOutOfDomain => "E-EVAL-039",
             Self::EnumWriteShapeViolation => "E-EVAL-042",
@@ -515,10 +520,8 @@ pub(crate) fn require_graph<'a>(
 /// grouping form. Meeting one in EXPRESSION position (this module) is a
 /// grammar error, not an unimplemented seam — §2.7's `<expr>` production has
 /// no production for any of them. (Whether the head is SERVED in effect
-/// position varies: most dispatch in [`crate::structural_verbs`]; `for-each`
-/// and `update-membership` refuses there too, pending the AG(i) lane (#653)
-/// — `for-each`, `update-edge` and (since Community port train Task 6)
-/// `update-hyperedge` all serve there today; the message below claims only the
+/// position varies: most dispatch in [`crate::structural_verbs`], `for-each`, `update-edge`,
+/// `update-hyperedge` and (#653) `update-membership` among them; the message below claims only the
 /// grammar, never service.) §2.8's `<verb>` production has ELEVEN
 /// alternatives: the ten structural verbs (`update-node`, `update-edge`,
 /// `update-hyperedge`, `update-membership`, `add-node`, `remove-node`,
@@ -526,9 +529,8 @@ pub(crate) fn require_graph<'a>(
 /// `emit`. Those eleven, plus the probability kernel's `choose`, `guard` and
 /// `for-each`, the four update-ops
 /// (`add`/`sub`/`set`/`scale`), and the two list forms (`members`,
-/// `member`) — 20 in all. (`update-membership`/`member` are Amendment-AG-era
-/// heads absent from `RESERVED_FORM_TAGS`; that reservation gap is a filed
-/// follow-up, not this table's concern.)
+/// `member`) — 20 in all. (`update-membership`, `member` and `membership-field-of` joined
+/// `RESERVED_FORM_TAGS` with #653, closing the reservation gap this paragraph once filed.)
 const EFFECT_POSITION_ONLY: [&str; 20] = [
     "choose",
     "guard",
@@ -561,9 +563,9 @@ const EFFECT_POSITION_ONLY: [&str; 20] = [
 /// still ride slices 2-3); `the` (slice 2, the carrier-read lane —
 /// `edges`/`edge-between` served as of T2, issue #559);
 /// `hyperedges`/`members-of`/`hyperedges-of`/`metric-of`
-/// (slice 3, the hyperedge + metric lane); `membership-field-of` (the
-/// AG(i) membership-payload lane, #653 — Director-ruled deferred to
-/// first consumer). `hyperedges`/`members-of`/`hyperedges-of` LEFT this
+/// (slice 3, the hyperedge + metric lane). `membership-field-of` (the AG(i)
+/// membership-payload lane, #653) LEFT this table when it was served.
+/// `hyperedges`/`members-of`/`hyperedges-of` LEFT this
 /// table at slice 3's landing (Community port train Task 3, 2026-08-21) —
 /// they are served, as query operands of iterating forms only, per the
 /// `SERVED_QUERY_HEADS` law below. `nodes`/`neighbors` moved to [`SERVED_QUERY_HEADS`] at
@@ -573,14 +575,7 @@ const EFFECT_POSITION_ONLY: [&str; 20] = [
 /// this is exhaustive over the pre-Task-1 `GRAPH_SEAM_HEADS` set AND the
 /// grammar's §2.8/§2.10 heads: a head in none of the three tables is
 /// `eval_intrinsic`'s.
-const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 3] = [
-    ("the", "slice 2"),
-    ("metric-of", "slice 3"),
-    (
-        "membership-field-of",
-        "the AG(i) membership-payload lane — #653",
-    ),
-];
+const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 2] = [("the", "slice 2"), ("metric-of", "slice 3")];
 
 /// The §2.6 query heads Task 4 onward serves — but **only** as the query
 /// operand of an iterating form (`fold`/`exists`/`forall`/`select-max`/
@@ -635,6 +630,7 @@ fn eval_form(
         "exists" | "forall" => eval_exists_forall(head, items, env, host, fuel),
         "select-max" | "select-min" => eval_selection(head, items, env, host, fuel),
         "field-of" => eval_field_of(items, env, host, fuel),
+        "membership-field-of" => eval_membership_field_of(items, env, host, fuel),
         "edge-between" => eval_edge_between(items, env, host, fuel),
         "quantize-mass" => eval_quantize_mass(items, env, host, fuel),
         "material-cycle" | "organizer-products" | "organizer-practice" => Err(EvalError::plain(format!(
@@ -845,7 +841,11 @@ fn static_additive_identity(body: &SExpr) -> Option<Value> {
         SExpr::Atom(Atom::Currency(_)) => Some(Value::Currency(Currency::from_micro_units(0))),
         SExpr::Atom(Atom::Scaled(s)) if s.kind != ScaledKind::Ratio => Some(Value::Real(0.0)),
         SExpr::List(items) => match items.as_slice() {
-            [SExpr::Atom(Atom::Symbol(head)), ..] if head == "field-of" => Some(Value::Real(0.0)),
+            [SExpr::Atom(Atom::Symbol(head)), ..]
+                if head == "field-of" || head == "membership-field-of" =>
+            {
+                Some(Value::Real(0.0))
+            }
             [SExpr::Atom(Atom::Operator(op)), lhs, rhs]
                 if matches!(op.as_str(), "+" | "-" | "*") =>
             {
@@ -1408,6 +1408,121 @@ fn eval_field_of(
              {other:?} (§2.10)"
         ))),
     }
+}
+
+/// The checks `membership-field-of` and `update-membership` share (§2.10 discipline 1 across
+/// two operands, D81, D82): the hyperedge's type must be the qname's owner and the member's node
+/// type the type the field was declared `:member` for (`E-EVAL-033`), then the pair must be a
+/// membership (`E-EVAL-038`). The test is `is_member`, a keyed lookup, never a scan of the
+/// hyperedge's members. `form` names the caller for the message only.
+pub(crate) fn check_membership_referents(
+    graph: &dyn GraphSubstrate,
+    types: &TypeEnv,
+    hyperedge: babylon_graph::substrate::HyperedgeId,
+    member: babylon_graph::substrate::NodeId,
+    qname: &str,
+    form: &str,
+) -> Result<(), EvalError> {
+    check_hyperedge_referent_type(hyperedge, qname, form, graph)?;
+    let Some(member_type) = types.membership_fields.get(qname) else {
+        return Err(EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!("{form} {qname}: no `deffield … :member` declares this field (§2.9)"),
+        ));
+    };
+    let actual = graph.node_type_of(member).map_err(|e| {
+        EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!("{form} {qname}: {} (§2.10 discipline 1)", e.message),
+        )
+    })?;
+    if actual != member_type {
+        return Err(EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!(
+                "{form} {qname}: the member is a {actual} node, but the field is declared for \
+                 {member_type} members (§2.10 discipline 1)"
+            ),
+        ));
+    }
+    let is_member = graph.is_member(hyperedge, member).map_err(|e| {
+        EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!("{form} {qname}: {}", e.message),
+        )
+    })?;
+    if !is_member {
+        return Err(EvalError::coded(
+            EvalCode::NotAMembership,
+            format!(
+                "{form} {qname}: the node is not a member of the hyperedge — a membership \
+                 carries the fields of a pair that exists (§2.10, D81)"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// `(membership-field-of <hyperedge> <member> <qname>)` (§2.10, D81): one declared field of one
+/// membership, a keyed lookup (never a scan of the hyperedge's members). Order: charge the
+/// accessor base; evaluate both operands (a `HyperedgeRef`, then a `NodeRef`; anything else is
+/// `E-EVAL-033`); the hyperedge's type must be the qname's owner and the member's node type the
+/// type the field was declared `:member` for (`E-EVAL-033`); the pair must be a membership
+/// (`E-EVAL-038`); then the stored value renders by the field's declared type, so an enum field
+/// reads as its member exactly as `field-of` renders one.
+fn eval_membership_field_of(
+    items: &[SExpr],
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Value, EvalError> {
+    charge(fuel, cost::ACCESSOR_BASE)?;
+    let [_, hyperedge_expr, member_expr, SExpr::Atom(Atom::QName(qname))] = items else {
+        return Err(EvalError::plain(
+            "(membership-field-of <hyperedge> <member> <qname>) — unrecognized shape",
+        ));
+    };
+    let hyperedge = evaluate(hyperedge_expr, env, host, fuel)?;
+    let member = evaluate(member_expr, env, host, fuel)?;
+    let (Value::HyperedgeRef(hyperedge), Value::NodeRef(member)) = (hyperedge, member) else {
+        return Err(EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!(
+                "membership-field-of {qname}: the first operand must evaluate to a hyperedge \
+                 reference and the second to a node reference (§2.10)"
+            ),
+        ));
+    };
+    let graph = require_graph(env, "membership-field-of")?;
+    let (Some(types), Some(enums)) = (env.types, env.enums) else {
+        return Err(EvalError::plain(format!(
+            "(membership-field-of …) needs the declared field-type registry (§2.13) but this \
+             EvalEnv carries none for {qname} — a driver error, the same shape as \
+             require_graph's"
+        )));
+    };
+    check_membership_referents(
+        graph,
+        types,
+        hyperedge,
+        member,
+        qname,
+        "membership-field-of",
+    )?;
+    let value = graph
+        .membership_attribute(hyperedge, member, qname)
+        .map_err(|e| {
+            EvalError::coded(
+                EvalCode::AccessorTypeOrValueMismatch,
+                format!(
+                    "membership-field-of {qname}: {} (§2.10 discipline 2 — absence is not a \
+                     value)",
+                    e.message
+                ),
+            )
+        })?;
+    crate::tick::bind_field_value(qname, value, types, enums)
+        .map_err(|e| EvalError::plain(e.to_string()))
 }
 
 /// §2.10 discipline 1, shared by every accessor AND update verb whose
@@ -2095,7 +2210,7 @@ fn apply_equality(op: &str, lhs: &Value, rhs: &Value) -> Result<Value, EvalError
 mod tests {
     use super::*;
     use crate::intrinsic_host::EmptyIntrinsicHost;
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     fn costs() -> IntrinsicCosts {
         IntrinsicCosts::new(HashMap::from([("double".to_owned(), 4)]))
@@ -2843,11 +2958,19 @@ mod tests {
         assert!(upd_mem_err.message.contains("§2.8"), "{upd_mem_err}");
         assert!(!upd_mem_err.message.contains("E-LOAD-021"), "{upd_mem_err}");
 
-        // `membership-field-of` (§2.10) stays unserved — its note now cites
-        // #653 by number, never a slice (Task 3 Step 4's own amendment).
-        let mem_field_err = eval("(membership-field-of self self x/y)")
-            .expect_err("the authored expression is refused");
-        assert!(mem_field_err.message.contains("#653"), "{mem_field_err}");
+        // `membership-field-of` (§2.10) is served (#653): it is no longer refused as an
+        // unimplemented seam, and a read returns its value.
+        assert_eq!(
+            read_membership("(membership-field-of n1 g1 nation/households)")
+                .expect("a served read returns its value"),
+            Value::Real(120.0)
+        );
+        let unserved = eval("(membership-field-of self self x/y)")
+            .expect_err("a read with no graph in the environment is refused");
+        assert!(
+            !unserved.message.contains("does not yet serve"),
+            "{unserved}"
+        );
     }
 
     /// The effect-position half of the flip (T3, ADR198 R1-R3, issue #560):
@@ -2885,6 +3008,7 @@ mod tests {
             .add_hyperedge("COMMUNITY", &[self_id, other_id])
             .expect("the fixture graph admits the authored hyperedge");
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([
                 (
                     "solidarity/strength".to_owned(),
@@ -2982,12 +3106,11 @@ mod tests {
     /// original 27-head copy could not catch an unclassified grammar head):
     /// every entry of `declarations::RESERVED_FORM_TAGS` partitions into
     /// exactly one of {evaluator-served, effect-position-only, unserved-
-    /// expression, declaration-level}, with no remainder — plus the three
-    /// Amendment-AG-era heads that predate their own `RESERVED_FORM_TAGS`
-    /// rows (a filed reservation-gap follow-up).
+    /// expression, declaration-level}, with no remainder — and the three
+    /// Amendment-AG-era heads, reserved since #653, are classified the same way.
     #[test]
     fn every_seam_head_is_classified() {
-        const EVALUATOR_SERVED: [&str; 12] = [
+        const EVALUATOR_SERVED: [&str; 13] = [
             "and",
             "or",
             "not",
@@ -3000,6 +3123,7 @@ mod tests {
             "select-max",
             "select-min",
             "quantize-mass",
+            "membership-field-of",
         ];
         // Tags that are declaration/top-form/clause vocabulary, never
         // expression-position heads — the load layer owns them.
@@ -3040,14 +3164,17 @@ mod tests {
             "unclassified RESERVED_FORM_TAGS (each would misdiagnose as \
              E-LOAD-021): {unclassified:?}"
         );
-        // The AG-era heads are absent from RESERVED_FORM_TAGS (filed gap)
-        // but MUST still be classified here so they refuse with the right
-        // diagnosis today.
+        // The AG-era heads are reserved now (#653); this loop keeps pinning that each is
+        // classified in exactly one table, whichever way `RESERVED_FORM_TAGS` is read.
         for head in ["update-membership", "member", "membership-field-of"] {
-            let in_effect_only = EFFECT_POSITION_ONLY.contains(&head);
-            let in_unserved = UNSERVED_EXPRESSION_HEADS.iter().any(|(h, _)| *h == head);
-            assert!(
-                in_effect_only ^ in_unserved,
+            let buckets = [
+                EVALUATOR_SERVED.contains(&head),
+                EFFECT_POSITION_ONLY.contains(&head),
+                UNSERVED_EXPRESSION_HEADS.iter().any(|(h, _)| *h == head),
+            ];
+            assert_eq!(
+                buckets.iter().filter(|b| **b).count(),
+                1,
                 "AG-era head {head} must be classified in exactly one table"
             );
         }
@@ -3095,6 +3222,7 @@ mod tests {
         fuel: &mut u64,
     ) -> Result<Value, EvalError> {
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::new(),
             exemptions: &[],
         };
@@ -3142,6 +3270,7 @@ mod tests {
             )
             .expect("the scenario declares the authored entity");
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([(
                 "organization/kind".to_owned(),
                 FieldDecl {
@@ -3437,6 +3566,7 @@ mod tests {
     ) -> Result<Value, EvalError> {
         let costs = costs();
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::new(),
             exemptions: &[],
         };
@@ -3685,6 +3815,7 @@ mod tests {
             None => HashMap::new(),
         };
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::new(),
             exemptions: &[],
         };
@@ -4641,6 +4772,219 @@ mod tests {
         assert_eq!(
             fuel, 95,
             ":fuel-used is a conformance-vector quantity (§6.1)"
+        );
+    }
+
+    // ---- Task 8 (#653): membership-field-of ----
+
+    const MEMBERSHIP_PRELUDE: &str = "(defvocabulary NodeType (SOCIAL_CLASS PERIPHERY))
+      (defvocabulary HyperedgeType (NATION CELL))
+      (defenum Tier (LOW MID HIGH))
+      (deffield nation/households int extensive :member NodeType/SOCIAL_CLASS)
+      (deffield nation/share probability intensive :member NodeType/SOCIAL_CLASS)
+      (deffield nation/coef coefficient intensive :member NodeType/SOCIAL_CLASS)
+      (deffield nation/tier enum Tier :member NodeType/SOCIAL_CLASS)
+      (deffield nation/mass real extensive :member NodeType/SOCIAL_CLASS)
+      (deffield cell/size int extensive)";
+
+    /// Evaluate `source` over the scenario `body` (appended to the membership prelude). The
+    /// bindings are `n1`/`n2` (the two `NATION` hyperedges, when present), `c1` (a `CELL`),
+    /// `g1`..`g3` (`SOCIAL_CLASS` nodes in mint order) and `p1` (a `PERIPHERY` node).
+    fn eval_membership(body: &str, source: &str, fuel: &mut u64) -> Result<Value, EvalError> {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let scenario = format!(
+            "(scenario ft/member {MEMBERSHIP_PRELUDE}
+               (node g1 NodeType/SOCIAL_CLASS) (node g2 NodeType/SOCIAL_CLASS)
+               (node g3 NodeType/SOCIAL_CLASS) (node p1 NodeType/PERIPHERY)
+               {body})"
+        );
+        let loaded = crate::scenario::load_scenario(&scenario, &mut graph)
+            .expect("the membership fixture loads");
+        let types = TypeEnv {
+            membership_fields: loaded.membership_fields.clone(),
+            fields: loaded.fields.clone(),
+            exemptions: &[],
+        };
+        let mut bindings = HashMap::new();
+        for (name, kind, index) in [("n1", "NATION", 0), ("n2", "NATION", 1), ("c1", "CELL", 0)] {
+            if let Some(id) = graph.hyperedges(kind).get(index) {
+                bindings.insert(name.to_owned(), Value::HyperedgeRef(*id));
+            }
+        }
+        for (i, id) in graph.nodes("SOCIAL_CLASS").iter().enumerate() {
+            bindings.insert(format!("g{}", i + 1), Value::NodeRef(*id));
+        }
+        bindings.insert("p1".to_owned(), Value::NodeRef(graph.nodes("PERIPHERY")[0]));
+        let costs = costs();
+        let env = EvalEnv {
+            bindings,
+            intrinsic_costs: &costs,
+            graph: Some(&graph),
+            types: Some(&types),
+            enums: Some(&loaded.enums),
+            elements: Vec::new(),
+            draw_context: None,
+        };
+        let (expr, _) = crate::reader::read(source).expect("test source must parse");
+        evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
+    }
+
+    const TWO_NATIONS: &str = "(hyperedge n1 HyperedgeType/NATION (members
+         (member NodeType/SOCIAL_CLASS g1 (nation/households 120) (nation/share 0.5p)
+           (nation/coef 0.75c) (nation/tier Tier/HIGH) (nation/mass 1.5r))
+         (member NodeType/SOCIAL_CLASS g2 (nation/households 7) (nation/share 0.25p)
+           (nation/coef 0.125c) (nation/tier Tier/LOW) (nation/mass 2.5r))))
+       (hyperedge n2 HyperedgeType/NATION (members
+         (member NodeType/SOCIAL_CLASS g1 (nation/households 30) (nation/share 1p)
+           (nation/coef 0.5c) (nation/tier Tier/MID) (nation/mass 4.5r))))
+       (hyperedge c1 HyperedgeType/CELL (members g3))";
+
+    fn read_membership(source: &str) -> Result<Value, EvalError> {
+        let mut fuel = 1_000;
+        eval_membership(TWO_NATIONS, source, &mut fuel)
+    }
+
+    #[test]
+    fn an_empty_sum_over_a_membership_read_is_zero() {
+        // A9/A3: the additive identity of a membership read is the field's `Real` zero, as
+        // for `field-of`; the query names no hyperedge, so the body never runs.
+        let mut fuel = 1_000;
+        let got = eval_membership(
+            "",
+            "(fold sum (hyperedges HyperedgeType/NATION) :as h \
+               (membership-field-of h g1 nation/mass))",
+            &mut fuel,
+        )
+        .expect("an empty sum over a membership read serves its identity");
+        assert_eq!(got, Value::Real(0.0));
+    }
+
+    #[test]
+    fn membership_field_of_reads_each_scalar_type() {
+        assert_eq!(
+            read_membership("(membership-field-of n1 g1 nation/households)").expect("int"),
+            Value::Real(120.0)
+        );
+        assert_eq!(
+            read_membership("(membership-field-of n1 g2 nation/share)").expect("probability"),
+            Value::Real(0.25)
+        );
+        assert_eq!(
+            read_membership("(membership-field-of n1 g1 nation/coef)").expect("coefficient"),
+            Value::Real(0.75)
+        );
+        assert_eq!(
+            read_membership("(membership-field-of n1 g2 nation/tier)").expect("enum"),
+            Value::Enum {
+                enum_type: "Tier".to_owned(),
+                member: "LOW".to_owned()
+            }
+        );
+        // The same group in the other nation keeps its own value.
+        assert_eq!(
+            read_membership("(membership-field-of n2 g1 nation/households)").expect("second"),
+            Value::Real(30.0)
+        );
+        assert_eq!(
+            read_membership("(membership-field-of n2 g1 nation/tier)").expect("second enum"),
+            Value::Enum {
+                enum_type: "Tier".to_owned(),
+                member: "MID".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn membership_field_of_is_charged_as_a_keyed_lookup() {
+        let mut fuel = 100;
+        eval_membership(
+            TWO_NATIONS,
+            "(membership-field-of n1 g1 nation/households)",
+            &mut fuel,
+        )
+        .expect("reads");
+        // accessor base 1 + two variable references (1 each).
+        assert_eq!(
+            fuel, 97,
+            "1 + the two operands, never multiplied by a ceiling"
+        );
+    }
+
+    #[test]
+    fn membership_field_of_a_non_member_is_e_eval_038() {
+        // g2 is in n1 but not n2; g3 is in neither nation.
+        for source in [
+            "(membership-field-of n2 g2 nation/households)",
+            "(membership-field-of n1 g3 nation/households)",
+        ] {
+            let err = read_membership(source).expect_err("not a membership");
+            assert_eq!(err.code, Some(EvalCode::NotAMembership), "{source}: {err}");
+            assert_eq!(
+                err.code.expect("coded").spec_code(),
+                "E-EVAL-038",
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn membership_field_of_a_wrong_hyperedge_type_is_e_eval_033() {
+        // c1 is a CELL; the qname's owner is NATION.
+        let err = read_membership("(membership-field-of c1 g3 nation/households)")
+            .expect_err("wrong hyperedge type");
+        assert_eq!(
+            err.code,
+            Some(EvalCode::AccessorTypeOrValueMismatch),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn membership_field_of_a_wrong_member_type_is_e_eval_033() {
+        // p1 is a PERIPHERY node; the field is annotated for SOCIAL_CLASS. (It is also no
+        // member, so the type check must come first.)
+        let err = read_membership("(membership-field-of n1 p1 nation/households)")
+            .expect_err("wrong member type");
+        assert_eq!(
+            err.code,
+            Some(EvalCode::AccessorTypeOrValueMismatch),
+            "{err}"
+        );
+        // Operands that are not the right references are E-EVAL-033 too.
+        let err = read_membership("(membership-field-of g1 n1 nation/households)")
+            .expect_err("swapped operands");
+        assert_eq!(
+            err.code,
+            Some(EvalCode::AccessorTypeOrValueMismatch),
+            "{err}"
+        );
+    }
+
+    /// Members are hydrated in descending order; the fold must visit them in ascending member id
+    /// (D25, D84). The binary64 sum of `0.1`, `0.2`, `0.3` is `0.6000000000000001` in that order
+    /// and `0.6` in the reverse one.
+    #[test]
+    fn a_fold_over_members_of_reads_in_ascending_member_id() {
+        let body = "(hyperedge n1 HyperedgeType/NATION (members
+             (member NodeType/SOCIAL_CLASS g3 (nation/households 1) (nation/share 1p)
+               (nation/coef 1c) (nation/tier Tier/LOW) (nation/mass 0.3c))
+             (member NodeType/SOCIAL_CLASS g2 (nation/households 1) (nation/share 1p)
+               (nation/coef 1c) (nation/tier Tier/LOW) (nation/mass 0.2c))
+             (member NodeType/SOCIAL_CLASS g1 (nation/households 1) (nation/share 1p)
+               (nation/coef 1c) (nation/tier Tier/LOW) (nation/mass 0.1c))))";
+        let mut fuel = 100_000;
+        let sum = eval_membership(
+            body,
+            "(fold sum (members-of n1 HyperedgeType/NATION) \
+               (membership-field-of n1 it nation/mass))",
+            &mut fuel,
+        )
+        .expect("the fold reads each payload");
+        assert_eq!(sum, Value::Real(0.1 + 0.2 + 0.3));
+        assert!(
+            (0.1_f64 + 0.2 + 0.3 - (0.3 + 0.2 + 0.1)).abs() > 0.0,
+            "the order is observable"
         );
     }
 }

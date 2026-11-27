@@ -185,9 +185,11 @@ enum StaticEffect {
     OrganizerProducts,
     OrganizerPractice,
     CityPdObserve,
+    CountyReview,
     NodeField(String),
     EdgeField(String),
     HyperedgeField(String),
+    MembershipField(String),
     Event(String),
     Shape(String),
 }
@@ -207,9 +209,11 @@ fn footprint_effect(effect: &EffectSignature) -> StaticEffect {
         EffectSignature::OrganizerProducts => StaticEffect::OrganizerProducts,
         EffectSignature::OrganizerPractice => StaticEffect::OrganizerPractice,
         EffectSignature::CityPdObserve => StaticEffect::CityPdObserve,
+        EffectSignature::CountyReview => StaticEffect::CountyReview,
         EffectSignature::NodeField(field) => StaticEffect::NodeField(field.clone()),
         EffectSignature::EdgeField(field) => StaticEffect::EdgeField(field.clone()),
         EffectSignature::HyperedgeField(field) => StaticEffect::HyperedgeField(field.clone()),
+        EffectSignature::MembershipField(field) => StaticEffect::MembershipField(field.clone()),
         EffectSignature::Event(event) => StaticEffect::Event(event.clone()),
         EffectSignature::Shape(verb) => StaticEffect::Shape(format!("{verb:?}")),
     }
@@ -219,9 +223,11 @@ fn allowed_effect(effect: AllowedEffect) -> StaticEffect {
     match effect {
         AllowedEffect::OrganizerPractice => StaticEffect::OrganizerPractice,
         AllowedEffect::CityPdObserve => StaticEffect::CityPdObserve,
+        AllowedEffect::CountyReview => StaticEffect::CountyReview,
         AllowedEffect::NodeField(field) => StaticEffect::NodeField(field.to_owned()),
         AllowedEffect::EdgeField(field) => StaticEffect::EdgeField(field.to_owned()),
         AllowedEffect::HyperedgeField(field) => StaticEffect::HyperedgeField(field.to_owned()),
+        AllowedEffect::MembershipField(field) => StaticEffect::MembershipField(field.to_owned()),
         AllowedEffect::Event(event) => StaticEffect::Event(event.to_owned()),
     }
 }
@@ -465,6 +471,7 @@ fn every_production_rule_identity_is_governed_independently_of_its_content() {
         michigan.join("material-cycle.bsl"),
         michigan.join("organizer-cycle.bsl"),
         national.join("state-opponent-cycle.bsl"),
+        national.join("county-review-cycle.bsl"),
         national.join("company-portfolio.bsl"),
     ]));
 

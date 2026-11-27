@@ -58,6 +58,7 @@ fn mixed_order_state_counts(
             good_id: template.good_id,
             unit_id: template.unit_id,
             hours_per_unit: 1,
+            units: 1,
         });
     state.final_demand_orders = (0..retail)
         .map(|index| FinalDemandOrder {

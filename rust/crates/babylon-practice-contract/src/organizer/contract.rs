@@ -19,6 +19,7 @@ use super::OrganizerPreview;
 use super::OrganizerReceipt;
 use super::OrganizerRefusal;
 use super::OrganizerReport;
+use super::OrganizerReviewConfig;
 use super::OrganizerStandingWork;
 use super::OrganizerState;
 use super::OrganizerTimeBindingMode;
@@ -26,6 +27,7 @@ use super::OrganizerView;
 use super::ORGANIZER_RECENT_OBSERVATIONS;
 use super::ORGANIZER_RECENT_RECEIPTS;
 use super::ORGANIZER_SCHEMA_VERSION;
+use babylon_kernel::geography::CountyGeoid;
 use serde::Serialize;
 
 use std::collections::BTreeSet;
@@ -103,6 +105,12 @@ pub fn organizer_contact_product_id(
     )
 }
 
+fn review_config_invalid(review: &OrganizerReviewConfig) -> bool {
+    CountyGeoid::try_from(review.county_geoid.as_str()).is_err()
+        || review.first_session_period == 0
+        || review.county_config_digest == [0; 32]
+}
+
 pub(super) fn label_valid(value: &str) -> bool {
     !value.is_empty() && value.len() <= 512 && !value.chars().any(char::is_control)
 }
@@ -158,6 +166,9 @@ pub fn validate_organizer_config(config: &OrganizerConfig) -> Result<(), Organiz
         super::hearing::validate_config(config, hearing)?;
         actors.push(hearing.claimant_actor_id);
         authorities.push(hearing.claimant_authority_id);
+    }
+    if config.review.as_ref().is_some_and(review_config_invalid) {
+        return Err(OrganizerError::InvalidConfig);
     }
     if actors.contains(&0)
         || actors.iter().copied().collect::<BTreeSet<_>>().len() != actors.len()
@@ -772,6 +783,8 @@ pub fn validate_organizer_receipt(receipt: &OrganizerReceipt) -> Result<(), Orga
         ) && receipt.choice != OrganizerChoice::Collect)
         || (receipt.outcome == OrganizerOutcome::HearingInvitationIssued
             && !matches!(receipt.choice, OrganizerChoice::InviteToHearing(_)))
+        || (receipt.outcome == OrganizerOutcome::ReviewContactMade
+            && !matches!(receipt.choice, OrganizerChoice::ReviewContact(_)))
         || receipt.actor_id == 0
         || receipt.period == 0
         || own_hours != receipt.hours_spent
@@ -1229,7 +1242,9 @@ pub(super) fn required_hours(
             super::aid::aid_binding(config, choice).map_or(0, |row| row.coordination_hours)
         }
         OrganizerChoice::Inquiry(_) => config.inquiry_hours,
-        OrganizerChoice::Reinforce | OrganizerChoice::ResumeStanding => config.contact_hours,
+        OrganizerChoice::Reinforce
+        | OrganizerChoice::ResumeStanding
+        | OrganizerChoice::ReviewContact(_) => config.contact_hours,
         OrganizerChoice::Hold if state.standing.authorized => config.contact_hours,
         OrganizerChoice::InviteToHearing(_) => config
             .hearing
@@ -1245,6 +1260,32 @@ fn hearing_resolves_in(config: &OrganizerConfig, resolves_period: u64) -> bool {
         .hearing
         .as_ref()
         .is_some_and(|hearing| hearing.period == resolves_period)
+}
+
+/// Whether a county review session can follow a contact that resolves in this period.
+fn review_open(config: &OrganizerConfig, resolves_period: u64) -> bool {
+    config
+        .review
+        .as_ref()
+        .is_some_and(|review| resolves_period >= review.first_session_period)
+}
+
+/// The refusal for a choice that exists only on a configured date: the hearing appointment or the
+/// county review's sessions.
+fn scheduled_choice_refusal(
+    config: &OrganizerConfig,
+    choice: OrganizerChoice,
+    resolves_period: u64,
+) -> Option<OrganizerRefusal> {
+    match choice {
+        OrganizerChoice::InviteToHearing(_) if !hearing_resolves_in(config, resolves_period) => {
+            Some(OrganizerRefusal::HearingUnavailable)
+        }
+        OrganizerChoice::ReviewContact(_) if !review_open(config, resolves_period) => {
+            Some(OrganizerRefusal::ReviewUnavailable)
+        }
+        _ => None,
+    }
 }
 
 /// Preview one command without admitting it.
@@ -1283,10 +1324,9 @@ pub fn preview_organizer(
         Some(OrganizerRefusal::ResourceContractChanged)
     } else if !command.allocation.matches_choice(command.choice) {
         Some(OrganizerRefusal::InvalidCommand)
-    } else if matches!(command.choice, OrganizerChoice::InviteToHearing(_))
-        && !hearing_resolves_in(config, resolves_period)
+    } else if let Some(refusal) = scheduled_choice_refusal(config, command.choice, resolves_period)
     {
-        Some(OrganizerRefusal::HearingUnavailable)
+        Some(refusal)
     } else if state
         .pending_aid
         .iter()
@@ -1333,6 +1373,7 @@ pub fn preview_organizer(
         Some(OrganizerRefusal::WrongCampaign | OrganizerRefusal::WrongAuthority)
     );
     Ok(OrganizerPreview {
+        review: None,
         choice: command.choice,
         allocation: command.allocation,
         current_period: state.period,
@@ -1345,6 +1386,7 @@ pub fn preview_organizer(
                 command.choice,
                 OrganizerChoice::Collect
                     | OrganizerChoice::InviteToHearing(_)
+                    | OrganizerChoice::ReviewContact(_)
                     | OrganizerChoice::Inquiry(_)
                     | OrganizerChoice::Reinforce
                     | OrganizerChoice::LocalAid

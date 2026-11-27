@@ -1,7 +1,7 @@
 //! Exact PG17 predecessor catalog admission for the read-only inspection source.
 use super::InspectionCopyError;
 use crate::current_schema;
-use crate::postgres_catalog::{self, CatalogObjectKind};
+use crate::postgres_catalog::{self, CatalogCensusEntry, CatalogObjectKind};
 use postgres::Transaction;
 use sha2::{Digest as _, Sha256};
 
@@ -10,7 +10,7 @@ struct SourceSchema {
     marker: &'static str,
     footprints: [&'static str; 4],
 }
-const SOURCES: [SourceSchema; 4] = [
+const SOURCES: [SourceSchema; 5] = [
     // 2824cf38eb5c26fd721f1bf28c50989091448491, 155 catalog objects.
     SourceSchema {
         marker: "f984e7ee59fa650fc470f884b4663a6fc773c44ed4494254727273e50093d071",
@@ -51,8 +51,54 @@ const SOURCES: [SourceSchema; 4] = [
             "bc983e892397c35f9963550f817a6610288977df85eee63830580c9851642c9b",
         ],
     },
+    // e16170cf0^ (dev at 56483608e), 248 catalog objects.
+    SourceSchema {
+        marker: "928796a327c81ef7b0bb716a2afddfd8cb761b1a4adf69e8edff3dbf11aa3f7b",
+        footprints: [
+            "a404e8d7e51a8d4f90bc63c06e446541a824ac07f9bfeb3f57dee5bda74b353f",
+            "6bee3b53a7da970c346fc1bbf8561045253e3637cd7b7fd660c37476deb7a250",
+            "a4e4ef6bb96deed6fcc1aab2f61fe2b86216efe9d938d9895d11ec22ca45d9b4",
+            "ba17ca78f45f140f9257f8a3ac1f13e2b80b2cbfce55d896294a984127bc5a4d",
+        ],
+    },
+];
+/// The marker and the four ACL footprints of the layout this build installs (owner, reader,
+/// observer, reader and observer: the order of the fixtures `current_schema` embeds).
+///
+/// When the stored layout changes, the two tests `the_current_layout_is_the_one_this_file_names`
+/// and `the_current_layout_is_not_its_own_predecessor` fail. Then, in this order: take the values
+/// these constants held, for they name the layout that has just become a predecessor, and add
+/// them to `SOURCES` as a new entry; make the live test
+/// `predecessor_inspection_copies_only_the_named_campaign_without_adopting_its_database` restore
+/// that layout in its private source and copy from it; decide in `rows.rs` (`carries`) whether a
+/// table the new layout adds is carried by the older ones; and only then set these constants to
+/// the new layout's values. Run the live focus `money_journal` for any such change.
+#[cfg(test)]
+const CURRENT_MARKER: &str = "39e625875539577ccce7d0768d20f01c6084aa08d56df890dcd26486369afedb";
+#[cfg(test)]
+const CURRENT_FOOTPRINTS: [&str; 4] = [
+    "3f39105e7b8a6c43926deb5677ddd034a23353239d7e11615c0b0a4c9d1e2742",
+    "5e2c844d50a0cbc9b6736cc1c39eb2362f3323ed2c30eb9cfd0da7e99225302d",
+    "b755f50de4c1864c4bdf41f2558295cdeb02f637ddbbf361f8cdc20feb7758ec",
+    "eb616d229236bfc5173dadd4ce7d28470e63ebbe4397bba87e35e9b2acd2e100",
 ];
 const INTEL: &str = "c3eac28a2cc8dcc019a4d1158d1e22c79737113927816086ca7d268f7ad77184";
+
+/// The table the layout of memberships carrying a value added; no admitted predecessor has it.
+const MEMBER_VALUES: &str = "babylon_state.graph_hyperedge_member_f64_v1";
+/// Markers of the admitted layouts that lack `MEMBER_VALUES`: the five predecessors.
+const WITHOUT_MEMBER_VALUES: [&str; 5] = [
+    "f984e7ee59fa650fc470f884b4663a6fc773c44ed4494254727273e50093d071",
+    "a8e623cb0f0a414e1bfebe808ae2f6631798070810f679bf8dca14198c4f9e69",
+    "27a833249a240ffdb2e524a45905f77b19dadb7dd05cf5db2e1c59d83318396b",
+    "85346ef39af0c28ce6455ab60fb2f2abb2f39b7f23bbbf07ad5ab4afd1013ba3",
+    "928796a327c81ef7b0bb716a2afddfd8cb761b1a4adf69e8edff3dbf11aa3f7b",
+];
+
+/// Whether the layout an admitted marker names holds the table. Decided by the marker alone.
+pub(super) fn carries(marker: &str, table: &str) -> bool {
+    !(table == MEMBER_VALUES && WITHOUT_MEMBER_VALUES.contains(&marker))
+}
 
 fn admit(marker: &str, footprint: &str) -> Result<&'static str, InspectionCopyError> {
     SOURCES
@@ -62,12 +108,9 @@ fn admit(marker: &str, footprint: &str) -> Result<&'static str, InspectionCopyEr
         .ok_or(InspectionCopyError::SourceSchema)
 }
 
-pub(super) fn check(tx: &mut Transaction<'_>) -> Result<&'static str, InspectionCopyError> {
-    current_schema::verify_owner_and_server(tx)
-        .and_then(|()| current_schema::verify_sentinels(tx))
-        .map_err(|_| InspectionCopyError::SourceSchema)?;
-    let entries =
-        postgres_catalog::read_census_rows(tx).map_err(|_| InspectionCopyError::SourceSchema)?;
+/// The digest of the admitted census entries, each as kind, schema, name and digest with a
+/// little-endian `u64` length before its bytes; the `babylon_intel` role is the one entry skipped.
+fn footprint(entries: &[CatalogCensusEntry]) -> Result<String, InspectionCopyError> {
     let mut hash = Sha256::new();
     for entry in entries {
         let key = entry.key();
@@ -96,7 +139,16 @@ pub(super) fn check(tx: &mut Transaction<'_>) -> Result<&'static str, Inspection
             hash.update(field.as_bytes());
         }
     }
-    let actual = crate::qualification_audit::trade::hex(&hash.finalize());
+    Ok(crate::qualification_audit::trade::hex(&hash.finalize()))
+}
+
+pub(super) fn check(tx: &mut Transaction<'_>) -> Result<&'static str, InspectionCopyError> {
+    current_schema::verify_owner_and_server(tx)
+        .and_then(|()| current_schema::verify_sentinels(tx))
+        .map_err(|_| InspectionCopyError::SourceSchema)?;
+    let entries =
+        postgres_catalog::read_census_rows(tx).map_err(|_| InspectionCopyError::SourceSchema)?;
+    let actual = footprint(&entries)?;
     let row=tx.query_one("SELECT current_setting('transaction_read_only')='on',singleton,encode(schema_sha256,'hex') FROM babylon_meta.current_schema",&[]).map_err(|_|InspectionCopyError::SourceSchema)?;
     if !row
         .try_get::<_, bool>(0)
@@ -117,6 +169,63 @@ pub(super) fn check(tx: &mut Transaction<'_>) -> Result<&'static str, Inspection
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_layout_before_membership_values_is_admitted() {
+        let marker = "928796a327c81ef7b0bb716a2afddfd8cb761b1a4adf69e8edff3dbf11aa3f7b";
+        for footprint in [
+            "a404e8d7e51a8d4f90bc63c06e446541a824ac07f9bfeb3f57dee5bda74b353f",
+            "6bee3b53a7da970c346fc1bbf8561045253e3637cd7b7fd660c37476deb7a250",
+            "a4e4ef6bb96deed6fcc1aab2f61fe2b86216efe9d938d9895d11ec22ca45d9b4",
+            "ba17ca78f45f140f9257f8a3ac1f13e2b80b2cbfce55d896294a984127bc5a4d",
+        ] {
+            assert_eq!(admit(marker, footprint), Ok(marker));
+        }
+    }
+
+    #[test]
+    fn only_the_five_predecessors_lack_the_membership_value_table() {
+        for source in &SOURCES {
+            assert!(!carries(source.marker, MEMBER_VALUES));
+            assert!(carries(
+                source.marker,
+                "babylon_state.graph_hyperedge_member_v1"
+            ));
+        }
+        assert_eq!(WITHOUT_MEMBER_VALUES.len(), SOURCES.len());
+        for marker in WITHOUT_MEMBER_VALUES {
+            assert!(SOURCES.iter().any(|s| s.marker == marker));
+        }
+        assert!(carries(CURRENT_MARKER, MEMBER_VALUES));
+        assert!(carries("unknown marker", MEMBER_VALUES));
+        assert!(carries("unknown marker", "babylon_state.tick_commit"));
+    }
+
+    #[test]
+    fn the_current_layout_is_the_one_this_file_names() {
+        assert_eq!(
+            crate::qualification_audit::trade::hex(&current_schema::current_schema_sha256()),
+            CURRENT_MARKER
+        );
+        let actual: Vec<String> = current_schema::current_census_fixtures()
+            .iter()
+            .map(|text| {
+                let census = postgres_catalog::parse_catalog_census(text).expect("fixture parses");
+                footprint(census.entries()).expect("fixture entries are admitted kinds")
+            })
+            .collect();
+        assert_eq!(actual, CURRENT_FOOTPRINTS);
+    }
+
+    #[test]
+    fn the_current_layout_is_not_its_own_predecessor() {
+        for source in &SOURCES {
+            assert_ne!(source.marker, CURRENT_MARKER);
+            for footprint in CURRENT_FOOTPRINTS {
+                assert!(!source.footprints.contains(&footprint));
+            }
+        }
+    }
 
     #[test]
     fn inspection_requires_marker_and_role_footprint_from_the_same_layout() {

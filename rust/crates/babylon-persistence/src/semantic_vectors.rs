@@ -14,10 +14,10 @@ use crate::semantic_codec::{self, SemanticCodecError, SemanticRefusalCode};
 const MAX_VECTOR_BYTES: usize = 262_144;
 const MAX_VECTOR_ROWS: usize = 128;
 const MAX_VECTOR_LINE_BYTES: usize = 65_536;
-const GOVERNED_VECTOR_ROWS: usize = 54;
+const GOVERNED_VECTOR_ROWS: usize = 55;
 const GOVERNED_VECTOR_SHA256: [u8; 32] = [
-    0x5c, 0x8c, 0x79, 0x84, 0x7e, 0xae, 0xa3, 0x41, 0xd5, 0x7d, 0x89, 0x81, 0x4f, 0x29, 0xf8, 0xc7,
-    0x92, 0xcc, 0xf9, 0x6c, 0xd5, 0x29, 0xab, 0x27, 0x06, 0x53, 0x89, 0x58, 0x31, 0xab, 0x33, 0x3e,
+    0xf8, 0x97, 0x15, 0xce, 0x57, 0xb1, 0x79, 0xe0, 0x5f, 0x4c, 0x6a, 0x46, 0xcc, 0x3e, 0x36, 0x90,
+    0x97, 0x94, 0x33, 0xf9, 0xa3, 0x2e, 0xac, 0x5e, 0x4d, 0x48, 0x45, 0x84, 0xa0, 0x72, 0x52, 0xc3,
 ];
 /// One bounded semantic-vector verification failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -369,6 +369,18 @@ fn execute_valid_row<'a>(
                 id,
                 semantic_codec::encode_stable_graph_hyperedge_f64(
                     string(data, "local_name")?,
+                    string(data, "qname")?,
+                    vector_f64(field(data, "value")?)?,
+                ),
+            )?
+        }
+        "stable_graph_hyperedge_member_f64_v1" => {
+            exact_keys(data, &["local_name", "member", "qname", "value"])?;
+            semantic_result(
+                id,
+                semantic_codec::encode_stable_graph_membership_f64(
+                    string(data, "local_name")?,
+                    string(data, "member")?,
                     string(data, "qname")?,
                     vector_f64(field(data, "value")?)?,
                 ),

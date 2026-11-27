@@ -1,0 +1,250 @@
+ADR326_seven_choices_of_the_countrys_numbers:
+  title: Seven choices of the country's numbers, ruled; the benefit at each place's own cost; every place opens even
+  date: '2026-11-26'
+  status: accepted
+  issue: PER-371
+  evidence_class: Designed
+  authority:
+    - >-
+        Director, 2026-11-26, typed before the dialogs: "hit me with them".
+    - >-
+        Director, 2026-11-26, in the question dialog, asked what to do about
+        the rule that a service cannot buy a service: "Regroup the services
+        (Recommended)".
+    - >-
+        Director, 2026-11-26, same dialog, asked whether business services
+        cross the border: "Yes, they cross (Recommended)".
+    - >-
+        Director, 2026-11-26, same dialog, asked how the benefit of a
+        household with no earner is set: "Each place's own cost
+        (Recommended)".
+    - >-
+        Director, 2026-11-26, same dialog, asked how the places' public
+        bodies open: "Every place opens even (Recommended)".
+    - >-
+        Director, 2026-11-26, second dialog, asked whether a service may be
+        sold across state lines inside the country: "Three services cross
+        (Recommended)".
+    - >-
+        Director, 2026-11-26, second dialog, asked who gets what the shop
+        saves on goods from abroad: "Households, in the price (Recommended)".
+    - >-
+        Director, 2026-11-26, second dialog, asked how far the dealing of
+        buyers to sellers should go before the country is judged: "Deal
+        buyers, then measure (Recommended)".
+  context: |
+    WHERE THE CHOICES CAME FROM. The plan for the country's numbers (stage 5
+    of the opening, ADR325 N1;
+    `docs/superpowers/plans/2026-11-25-opening-stage-5-the-countrys-numbers.md`)
+    was drafted with a prototype of the builder, a model outside the game on
+    the committed 2024 tables. The prototype solved the opening under the
+    game's own rules and found that some of them bend it. The plan built the
+    approved text and kept each bend as a setting, with the variant written
+    out, until the Director ruled. Two more choices came from checking the
+    plan: one on the prototype (a service is sold only inside its own state),
+    one counted on the compiled country itself (every buyer is given one
+    seller of each thing).
+
+    WHAT THE PROTOTYPE COUNTED. A service may buy goods and utility but no
+    other service, so about $550 thousand million a period that service
+    trades buy of business services and premises lands on households and on
+    goods makers: public services' money falls from $167 to $72 thousand
+    million a period and the tax from 24% to 14%. Only goods cross a border,
+    so goods exports are raised to 2.7 times what is observed to balance
+    trade, and three quarters of the machines the country makes go abroad.
+    The needs of one person of a household with no earner cost $1,066 a
+    period at national prices and between $846 and $1,691 by county. Under
+    one fund share for every place, 1,867 of 3,142 counties collect less than
+    they pay. State by state, about 17% of utility work, 12% of leisure work
+    and 7 to 9% of business services sit in states that cannot use them.
+    Buyers save $18 to $28 thousand million a period on imports, $4 to $6 of
+    it the shop's on goods for households. These are figures of the
+    prototype, not of the country.
+
+    WHAT THE COMPILED COUNTRY SHOWED. On the twelve-trade opening 39.5% of
+    the workers in trades that have buyers are at workplaces nobody is given
+    to buy from (`reports/country-opening-2026-11/README.md`). A second
+    fault, a company's sweep of working capital at the opening, was mended in
+    the test scenario on 26 November (the Director's ruling of 20 November,
+    which the opening design had not taken up); with it mended the layoffs of
+    period 2 did not move.
+  decision: |
+    S1. THE SERVICES ARE REGROUPED. In the Director's pick: "No engine
+    change. The scenario puts utility, business services and premises in the
+    first stage, and care, schools, leisure and public services in the
+    second, so that those can buy their offices and premises. In the
+    prototype this brings back the tax (22%) and public services' money ($155
+    thousand million a period, the same as the full cure), and goods come
+    within 15% of what they cost in the model with no such rules. What stays
+    bent: first-stage services cannot buy one another, so housing does not
+    carry its business services. It costs 31% less than in that model and is
+    7.5% of what households buy, where the full cure has 11.4%. It can be put
+    right with homes, when the builder is run again."
+
+    S2. BUSINESS SERVICES CROSS THE BORDER. In the Director's pick: "The
+    compiler lets buyers take a share of their business services from across
+    the border, by the accounts' own import and export shares. Two or three
+    tasks, by my estimate. In the prototype, with services regrouped as I
+    recommend in the first question, goods exports fall to 1.4 times
+    observed, and 38% of machines and 15% of business services are exported.
+    One thing for you to weigh: the country then pays for part of the
+    periphery's goods with offices' work (finance, law, management) and not
+    with machines, which is nearer to how it really pays, and it puts that
+    exchange on the map."
+
+    S3. THE BENEFIT IS EACH PLACE'S OWN COST. In the Director's pick: "The
+    benefit is what the needs cost in that place: nobody with no earner opens
+    going without, and nobody is paid above their needs. It is still one
+    rule, 'the needs in full', which politics can cut or raise as a
+    percentage. The benefit then follows local prices, and so local pay:
+    $1,691 a person in San Francisco against $846 in a cheap county, for the
+    same needs. In the prototype it costs the fund $692 thousand million a
+    year (tax 21.8%). It reads 'its own rate' as a rule and not as one
+    figure, and needs one more engine task."
+
+    S4. EVERY PLACE OPENS EVEN. In the Director's pick: "A place that
+    collects more than it needs sends the rest to the national fund. Where a
+    place's own taxes are too few, the fund pays that place's public
+    providers directly, as grants from above do in reality. Nobody cuts or
+    piles up at the opening; what changes it afterwards is play. Those
+    payments are a row of the fund that politics can later cut, and in a
+    slump the places that live on them are hit first. (One public body cannot
+    pay another in the engine, so the fund pays the providers themselves.
+    About one more task.)"
+
+    S5. THREE SERVICES CROSS STATE LINES. In the Director's pick: "Utility,
+    leisure and business services are sold across the whole country, each
+    buyer's demand shared over providers by what they can make. These are the
+    three that states sell to each other in reality: power and gas, travel,
+    offices. Housing and household services (care, schools) stay in their own
+    state; the 8% and 6% that sit in the wrong states stay as a difference
+    between regions, in play. Cost: a compiler plan of its own before the
+    rebuilt opening is counted, three or four tasks by my estimate, not a
+    plan yet."
+
+    S6. HOUSEHOLDS GET WHAT THE SHOP SAVES ABROAD. In the Director's pick:
+    "The shop sells each good at what it paid plus its charge, so goods from
+    abroad are cheaper in the shop. It reads 'the shop charges labor only'
+    strictly. And it puts this part of the gain from cheap foreign labor into
+    the price of what households in the country consume, beside the hours
+    ledger that already counts it in hours. Cost: one change in a compiler
+    task already planned, and one setting of the builder."
+
+    S7. BUYERS ARE DEALT, THEN THE COUNTRY IS MEASURED. In the Director's
+    pick: "Only the three compiler tasks, already in the plan. Each household
+    still has one seller of each thing, so a household whose clinic shuts
+    loses all its care until a later rule lets it change. And where two
+    sellers of one place pay different wages (often twice as much), which
+    household gets the dearer one is an accident of the dealing. The bench
+    then shows whether that is enough. Shared custom is built before homes."
+  amends:
+    - >-
+        ADR313 and the opening design of 20 November, rule O10 with rule O4:
+        a service trade's recipe carries the premises and the business
+        services it buys where the two stages allow it (S1); what a
+        first-stage service cannot buy of another first-stage service is
+        still spread by O4, and is put right with homes.
+    - >-
+        The opening design, rule O11 and call 8: business services have their
+        own share bought abroad and their own volume sold abroad, and the
+        money balance of trade at the opening counts them (S2).
+    - >-
+        The opening design, rule O12 ("Each kind of benefit is a named row of
+        the scenario, with its own rate"): the rate of the benefit for a
+        household with no earner is the rule "the needs in full" at each
+        place's own prices, which politics can cut or raise as a percentage,
+        not one figure for the country (S3).
+    - >-
+        The opening design, rule O13 and ADR313 O12 ("one national fund that
+        takes a share of both taxes everywhere"): the fund's share is set
+        place by place so that each place's public body opens even, and the
+        fund pays the public providers of a place whose own taxes are too
+        few (S4). The design's call 10 gave the reason for benefits; S4
+        extends it to public services.
+    - >-
+        The compiler's rule that a service is sold only inside the buyer's
+        own state (no earlier ruling set it; the Wayne map design of 3
+        November calls it "the existing same-state service rule"): utility,
+        leisure and business services are sold across the country (S5).
+        ADR264 is unchanged: a connection authorizes service reach without
+        asserting a geographic path.
+    - >-
+        The opening design, rule O9, and ADR325's "the shop as it is": the
+        shop charges labor only and posts a good at what it paid for it plus
+        its charge (S6).
+    - >-
+        ADR314, rule A4 ("No buyer is bound to one seller"), held since its
+        first measurement: the compiler deals whole buyers to sellers in
+        proportion now, and a buyer's custom shared over its sellers in the
+        engine is built before homes (S7). Rule A4 in full, the cheapest
+        seller first, stays held until it is measured with the six rules.
+    - >-
+        ADR325, N1 ("by the design you approved on 20 November as it
+        stands"): the country's numbers are built by that design with S1 to
+        S6.
+  lead_readings_for_the_director_to_check:
+    - >-
+        The benefit is set by account, not by place on the map. A place on
+        the map is kept as up to two parts, each with its own households,
+        workplaces, wages and public body (316 parts at 187 places), and each
+        account pays its own sellers' prices. So "what the needs cost in that
+        place" is counted for each no-earner account at its own sellers'
+        prices. The compiler works the amounts out from the opening's own
+        prices, so the scenario carries the rule ("the needs in full", a
+        share of 100%) and not a table. Collective residences are paid the
+        same way, at a resident's own needs, for their residents with no job
+        at the opening.
+    - >-
+        Only businesses buy offices' work across a border; a household buys
+        its own at home, on both sides. A business takes its share abroad as
+        it does of a good. For that the engine must let a workplace take a
+        service from several providers: a region abroad has one provider and
+        a few buying workplaces, each a whole trade, as large as many home
+        providers, so one seller a buyer cannot carry the country's exports.
+        This is the workplaces' half of shared custom (ADR314, rule A4),
+        brought forward by one engine task; households keep one seller of
+        each thing until shared custom is built before homes. The lead's
+        estimate of two or three tasks for the border becomes four.
+    - >-
+        For the three services that cross state lines, a state's buyers fill
+        their own state's providers first, up to the nation's level, and
+        only the rest crosses. The map then shows which states buy power,
+        travel and offices' work from outside and which sell them. Counted
+        on the compiled twelve-trade opening: about a tenth of utility and
+        of business services then crosses a state line, and 2% of leisure.
+    - >-
+        The fund's payments to the providers of a place short of taxes stand
+        after every benefit in the fund's order, so that a short fund cuts
+        them first, as the pick says ("in a slump the places that live on
+        them are hit first").
+    - >-
+        Each part's public body opens even, not each place on the map: the
+        fund's share and the fund's payments are set part by part.
+    - >-
+        "Shared custom is built before homes" is taken as an order of work:
+        for households it gets its own design and plan after the pay fight's
+        first part and the game's own turn, unless the bench shows it is
+        needed sooner. For workplaces buying a service, one engine task of it
+        is built now, for the border (the reading above).
+    - >-
+        The benefit is net of the county's support. The opening design's
+        call 16 keeps the county's support for the people who look for work
+        at the opening, and some households with no earner have such people.
+        The fund pays such a household what its needs cost less what its
+        county already pays it: its needs in full and no more, as the pick
+        says ("nobody is paid above their needs"). The fund's cost falls by
+        what the counties pay.
+    - >-
+        Housing, household services and public provision are bought in the
+        buyer's own place, where the pick says "stay in their own state". The
+        plan had this before the ruling, so that a home, a clinic and a
+        school are where the household is. It leaves a little more unsold
+        than the state would. Counted on the compiled twelve-trade opening
+        with the numbers taken out: 5.0% of what household services can make
+        against 4.5%, and 9.9% of premises against 6.9%.
+    - >-
+        What a workplace abroad buys of offices' work in the country is dealt
+        over the country's providers by their size, the largest buyers abroad
+        at the largest office centers, so that each home provider sells
+        abroad in proportion to its people. A service has no distance in the
+        engine, so nearness is not read.

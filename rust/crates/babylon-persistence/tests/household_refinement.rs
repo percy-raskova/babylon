@@ -28,6 +28,7 @@ fn empty_refinements_preserve_every_source_budget_and_identity() {
         national_resident_workforce::national_resident_workforce_reference()
             .expect("the workforce reference fixture loads"),
         1000,
+        None,
     )
     .expect("the fixture households fit the authored cohorts");
     let time = national_household_time_allocation::allocate_household_time(counties, &households)
@@ -71,6 +72,7 @@ fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_total
             .expect("the household reference fixture loads"),
         workforce,
         1000,
+        None,
     )
     .expect("the fixture households fit the authored cohorts");
     let time = national_household_time_allocation::allocate_household_time(counties, &budgets)
@@ -142,6 +144,7 @@ fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_total
         &budgets,
         &empty,
         &policy,
+        None,
     )
     .expect("the fixture home county allocation fits");
     let refined = national_resident_allocation::allocate_home_county(
@@ -151,6 +154,7 @@ fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_total
         &budgets,
         &leaves,
         &policy,
+        None,
     )
     .expect("the fixture home county allocation fits");
     let other_budgets = national_household_allocation::allocate_households(
@@ -159,6 +163,7 @@ fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_total
             .expect("the household reference fixture loads"),
         workforce,
         2000,
+        None,
     )
     .expect("the fixture households fit the authored cohorts");
     let mut other_policy = policy.clone();
@@ -171,7 +176,8 @@ fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_total
             workforce,
             &other_budgets,
             &leaves,
-            &other_policy
+            &other_policy,
+            None,
         ),
         Err(babylon_persistence::national_resident_allocation::AllocationError::SourceScope)
     );

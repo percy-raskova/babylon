@@ -63,6 +63,17 @@ categories:
         granularity: National-Industry (BEA Summary ~70 industries)
         cadence: Annual
         class: Runtime
+        local_path: /media/user/data/babylon-data/input-output/supply-use/ (raw;
+          drive-only, read ONLY by tools/make_national_trade_accounts.py at
+          generation time — CI-no-drive)
+        added_by: >-
+          PER-371 (the opening of the national economy, stage 1): the four pinned
+          workbooks Use_Summary.xlsx and Supply_Summary.xlsx (sheet 2024) and
+          Use_SUT_Detail.xlsx and Supply_Detail.xlsx (sheet 2017), listed in
+          tools/national_trade_accounts_2024_sources.json, are folded into the twelve
+          trades by tools/make_national_trade_accounts.py; the committed table
+          src/babylon/data/reference/economy/national_trade_accounts_2024.csv.gz is
+          registered in data-artifacts.yaml (hand-maintained, no backing sqlite table).
       - id: BEA_IO_TOTAL_REQ
         agency: BEA
         dataset: Total Domestic Requirements (Leontief inverse, IxI_TR_Summary)

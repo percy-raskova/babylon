@@ -5,35 +5,57 @@ use super::{
 use crate::national_resident_allocation::AllocationError;
 use std::result::Result as StdResult;
 type Result<T> = StdResult<T, Error>;
-const KEYS: [HouseholdBudgetKey; 5] = [
+/// Slots: the five keys of schema 7 and earlier in key order, then the two bands of schema 8.
+const KEYS: [HouseholdBudgetKey; SLOTS] = [
     HouseholdBudgetKey::EarningNonowner,
     HouseholdBudgetKey::EarningOwner,
     HouseholdBudgetKey::NoEarnerNonowner,
     HouseholdBudgetKey::NoEarnerOwner,
     HouseholdBudgetKey::CollectiveResidence,
+    HouseholdBudgetKey::EarningLowerPaidHalf,
+    HouseholdBudgetKey::EarningBetterPaidForty,
 ];
+const SLOTS: usize = 7;
+const COLLECTIVE: usize = 4;
+/// The slots that hold earning households, in the order a remainder is dealt in.
+const EARNING: [usize; 4] = [0, 1, 5, 6];
+/// The slots of ordinary households.
+const ORDINARY: [usize; 6] = [0, 1, 2, 3, 5, 6];
 
 pub(super) fn allocate_county(
     c: HouseholdCountyControls,
     owner_bps: u16,
+    next_forty_bps: Option<u16>,
 ) -> Result<Vec<HouseholdBudgetAllocation>> {
     let households = c
         .with_historical_earnings_households
         .checked_add(c.without_historical_earnings_households)
         .ok_or(Error::Arithmetic)?;
-    validate(c, households, owner_bps)?;
+    validate(c, households, owner_bps, next_forty_bps)?;
     if c.population == 0 {
         return Ok(vec![]);
     }
     let with_owners = owners(c.with_historical_earnings_households, owner_bps)?;
     let without_owners = owners(c.without_historical_earnings_households, owner_bps)?;
-    let h = [
-        c.with_historical_earnings_households - with_owners,
-        with_owners,
-        c.without_historical_earnings_households - without_owners,
-        without_owners,
-        0,
-    ];
+    let mut h = [0; SLOTS];
+    h[1] = with_owners;
+    h[2] = c.without_historical_earnings_households - without_owners;
+    h[3] = without_owners;
+    let rest = c.with_historical_earnings_households - with_owners;
+    if let Some(next) = next_forty_bps {
+        // The owners and the better-paid forty are the top `owner + next` of the earning households.
+        let upper = owners(
+            c.with_historical_earnings_households,
+            owner_bps.checked_add(next).ok_or(Error::Arithmetic)?,
+        )?;
+        h[6] = upper.checked_sub(with_owners).ok_or(Error::Arithmetic)?;
+        h[5] = c
+            .with_historical_earnings_households
+            .checked_sub(upper)
+            .ok_or(Error::Arithmetic)?;
+    } else {
+        h[0] = rest;
+    }
     let gq = c.population - c.household_persons;
     let maximum_ordinary_employed = if c.with_historical_earnings_households == 0 {
         0
@@ -53,24 +75,29 @@ pub(super) fn allocate_county(
         .clamp(lower, upper)
         .max(c.working_owners.min(upper));
     let persons = persons(c, h, households, ordinary_employed)?;
-    let mut employed = [0; 5];
+    let mut employed = [0; SLOTS];
     let preferred_owners = c.working_owners.min(ordinary_employed).min(persons[1]);
-    let residual = apportion(
-        ordinary_employed - preferred_owners,
-        &[persons[0], persons[1] - preferred_owners],
-    )?;
-    employed[0] = residual[0];
-    employed[1] = residual[1]
+    let weights: Vec<u64> = EARNING
+        .iter()
+        .map(|i| persons[*i] - if *i == 1 { preferred_owners } else { 0 })
+        .collect();
+    for (slot, share) in EARNING
+        .iter()
+        .zip(apportion(ordinary_employed - preferred_owners, &weights)?)
+    {
+        employed[*slot] = share;
+    }
+    employed[1] = employed[1]
         .checked_add(preferred_owners)
         .ok_or(Error::Arithmetic)?;
-    employed[4] = c.employed - ordinary_employed;
+    employed[COLLECTIVE] = c.employed - ordinary_employed;
     let capacities = persons
         .iter()
         .zip(employed)
         .map(|(p, e)| p.checked_sub(e).ok_or(Error::PopulationControl))
         .collect::<Result<Vec<_>>>()?;
     let reserves = apportion(c.reserve, &capacities)?;
-    Ok((0..5)
+    Ok((0..SLOTS)
         .filter(|i| persons[*i] > 0)
         .map(|i| HouseholdBudgetAllocation {
             key: KEYS[i],
@@ -84,12 +111,12 @@ pub(super) fn allocate_county(
 
 fn persons(
     c: HouseholdCountyControls,
-    households: [u64; 5],
+    households: [u64; SLOTS],
     ordinary_households: u64,
     employed: u64,
-) -> Result<[u64; 5]> {
+) -> Result<[u64; SLOTS]> {
     let mut p = households;
-    p[4] = c.population - c.household_persons;
+    p[COLLECTIVE] = c.population - c.household_persons;
     let mut remaining = c.household_persons - ordinary_households;
     let owner_extra = c
         .working_owners
@@ -98,27 +125,40 @@ fn persons(
         .min(remaining);
     p[1] = p[1].checked_add(owner_extra).ok_or(Error::Arithmetic)?;
     remaining -= owner_extra;
-    let earning_capacity = p[0].checked_add(p[1]).ok_or(Error::Arithmetic)?;
+    let earning_capacity = EARNING.iter().try_fold(0_u64, |sum, i| {
+        sum.checked_add(p[*i]).ok_or(Error::Arithmetic)
+    })?;
     let required_extra = employed.saturating_sub(earning_capacity);
     remaining = remaining
         .checked_sub(required_extra)
         .ok_or(Error::DesignedAllocationInfeasible)?;
-    for (slot, extra) in p[..2]
-        .iter_mut()
-        .zip(apportion(required_extra, &households[..2])?)
-    {
-        *slot = slot.checked_add(extra).ok_or(Error::Arithmetic)?;
-    }
-    for (slot, extra) in p[..4]
-        .iter_mut()
-        .zip(apportion(remaining, &households[..4])?)
-    {
-        *slot = slot.checked_add(extra).ok_or(Error::Arithmetic)?;
-    }
+    spread(&mut p, &EARNING, required_extra, &households)?;
+    spread(&mut p, &ORDINARY, remaining, &households)?;
     Ok(p)
 }
-fn validate(c: HouseholdCountyControls, households: u64, owner_bps: u16) -> Result<()> {
-    if !(1..=10_000).contains(&owner_bps) {
+/// Add `total` to the named slots in proportion to their households.
+fn spread(
+    p: &mut [u64; SLOTS],
+    slots: &[usize],
+    total: u64,
+    households: &[u64; SLOTS],
+) -> Result<()> {
+    let weights: Vec<u64> = slots.iter().map(|i| households[*i]).collect();
+    for (slot, extra) in slots.iter().zip(apportion(total, &weights)?) {
+        p[*slot] = p[*slot].checked_add(extra).ok_or(Error::Arithmetic)?;
+    }
+    Ok(())
+}
+fn validate(
+    c: HouseholdCountyControls,
+    households: u64,
+    owner_bps: u16,
+    next_forty_bps: Option<u16>,
+) -> Result<()> {
+    if !(1..=10_000).contains(&owner_bps)
+        || next_forty_bps
+            .is_some_and(|next| next == 0 || u32::from(owner_bps) + u32::from(next) >= 10_000)
+    {
         return Err(Error::Policy);
     }
     let workforce = c.employed.checked_add(c.reserve).ok_or(Error::Arithmetic)?;

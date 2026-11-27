@@ -1,19 +1,20 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::amount_editor::AmountEdits;
+use super::county::Standing;
 use super::developments::Developments;
 use super::scene::{OrganizerScene, OrganizerSceneMode, OrganizerSubject};
-use super::{draft, evidence, presentation, ui};
+use super::{county, draft, evidence, presentation, ui};
 use babylon_persistence::runtime_session::OrganizerAllocation;
 use babylon_persistence::ArchiveEvidenceClass;
 
 use babylon_persistence::runtime_session::{
-    CityPdEncounter, OrganizerAidPending, OrganizerAidResolution, OrganizerBodyDisclosure,
-    OrganizerBodyScope, OrganizerBodySource, OrganizerChoice, OrganizerCollectionPreview,
-    OrganizerCollectionResolution, OrganizerCommand, OrganizerCommitment, OrganizerKnownAidPartner,
-    OrganizerMaterialAidPreview, OrganizerPreview, OrganizerSnapshot, OrganizerView,
-    RuntimeSessionRequest, RuntimeSessionScope, CITY_PD_ENCOUNTER_SCHEMA_VERSION,
-    RUNTIME_SESSION_PROTOCOL_VERSION,
+    CityPdEncounter, CountyReviewProjection, OrganizerAidPending, OrganizerAidResolution,
+    OrganizerBodyDisclosure, OrganizerBodyScope, OrganizerBodySource, OrganizerChoice,
+    OrganizerCollectionPreview, OrganizerCollectionResolution, OrganizerCommand,
+    OrganizerCommitment, OrganizerKnownAidPartner, OrganizerMaterialAidPreview, OrganizerPreview,
+    OrganizerSnapshot, OrganizerView, RuntimeSessionRequest, RuntimeSessionScope,
+    CITY_PD_ENCOUNTER_SCHEMA_VERSION, RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 
 use bevy::prelude::*;
@@ -43,6 +44,10 @@ pub(crate) enum OrganizerInspector {
     Review,
     Practices,
     Hearing,
+    CountyLedger,
+    CountyRoster,
+    CountySession,
+    FoodRun,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -213,6 +218,50 @@ pub(super) fn hearing_update(
     Some("Invitation window open. Read the Wayne hearing notice before advancing.")
 }
 
+/// The clause a change in how the county's money stands against the roll adds to the notice.
+fn standing_clause(before: Standing, after: Standing) -> Option<&'static str> {
+    match (before, after) {
+        (Standing::EveryUnit, Standing::EveryUnit) => None,
+        (_, Standing::EveryUnit) => Some("the county can pay every unit again"),
+        (Standing::EveryUnit, Standing::SomeUnits) => Some("the county could not pay every unit"),
+        (Standing::EveryUnit | Standing::SomeUnits, Standing::NoUnit) => {
+            Some("the county paid no household unit")
+        }
+        _ => None,
+    }
+}
+
+/// The notice for a county session record that has just arrived, when the player has a reason to
+/// read it: it is the county's first session, it carries the player's contact, or it changes
+/// whether the county could pay every unit on the roll. Any other session installs silently.
+/// Only a change seen by a client that already held a projection is news.
+pub(super) fn county_update(
+    previous: Option<&CountyReviewProjection>,
+    county: Option<&CountyReviewProjection>,
+) -> Option<String> {
+    let county = county?;
+    let held = county.session_period?;
+    let last = previous?;
+    if last.session_period == Some(held) {
+        return None;
+    }
+    let mut clauses = Vec::new();
+    if county.contact.is_some() {
+        clauses.push("your contact was heard");
+    }
+    if let (Some(before), Some(after)) = (county::standing(last), county::standing(county)) {
+        clauses.extend(standing_clause(before, after));
+    }
+    let first = held == county.first_session_period;
+    if clauses.is_empty() {
+        return first.then(|| "The county's session record arrived.".to_owned());
+    }
+    Some(format!(
+        "The county's session record arrived: {}.",
+        clauses.join(", and ")
+    ))
+}
+
 /// Cached lawful projection and local presentation. No authoritative state is owned here.
 #[derive(Resource, Default)]
 pub(crate) struct OrganizerClient {
@@ -234,6 +283,10 @@ pub(crate) struct OrganizerClient {
     pub aid_resolutions: Vec<OrganizerAidResolution>,
     pub collection: Option<OrganizerCollectionPreview>,
     pub collection_resolutions: Vec<OrganizerCollectionResolution>,
+    /// The county as the player sees it this period, absent for a campaign with no county review.
+    pub(super) county_review: Option<CountyReviewProjection>,
+    /// The roster's page, reset when the roster's period changes.
+    pub(super) roster_page: usize,
     pub city_pd_encounters: Vec<CityPdEncounter>,
     pub inspector: OrganizerInspector,
     pub scene_mode: OrganizerSceneMode,
@@ -450,6 +503,18 @@ impl OrganizerClient {
         })
     }
 
+    /// Whether a contact made now would land in a period the county holds a session.
+    fn contact_window_open(&self) -> bool {
+        self.county_review
+            .as_ref()
+            .zip(self.view.as_ref())
+            .is_some_and(|(county, view)| {
+                view.period
+                    .checked_add(1)
+                    .is_some_and(|resolves| resolves >= county.first_session_period)
+            })
+    }
+
     pub(super) fn choice_available(&self, choice: OrganizerChoice) -> bool {
         if matches!(choice, OrganizerChoice::InviteToHearing(_)) {
             return self
@@ -457,6 +522,9 @@ impl OrganizerClient {
                 .as_ref()
                 .and_then(super::hearing::invitation)
                 .is_some();
+        }
+        if matches!(choice, OrganizerChoice::ReviewContact(_)) {
+            return self.contact_window_open();
         }
         if choice == OrganizerChoice::Collect {
             return self
@@ -487,6 +555,9 @@ impl OrganizerClient {
         choice: OrganizerChoice,
     ) -> Option<OrganizerCommand> {
         let view = self.view.as_ref()?;
+        if matches!(choice, OrganizerChoice::ReviewContact(_)) && !self.contact_window_open() {
+            return None;
+        }
         let allocation = if choice == OrganizerChoice::Collect {
             let allocation = self.draft.as_ref()?.collection_allocation;
             if !matches!(allocation, OrganizerAllocation::Collection { .. }) {
@@ -712,7 +783,7 @@ impl OrganizerClient {
         }
         let new_city_pd_notice = self.new_city_pd_notice(&snapshot, &context);
         let hearing_notice = (context.observation.tick == context.durable_tick)
-            .then(|| hearing_update(self.view.as_ref(), &snapshot.view))
+            .then(|| self.period_notice(&snapshot))
             .flatten();
         let development = if context.observation.tick == context.durable_tick {
             self.developments.install(
@@ -723,6 +794,7 @@ impl OrganizerClient {
         } else {
             None
         };
+        self.install_county(snapshot.county_review);
         self.collection = snapshot.collection;
         self.city_pd_encounters = snapshot.city_pd_encounters;
         self.collection_resolutions = snapshot.collection_resolutions;
@@ -749,7 +821,7 @@ impl OrganizerClient {
             }
         } else if let Some(hearing_notice) = hearing_notice {
             session.pause_playback();
-            self.message = hearing_notice.into();
+            self.message = hearing_notice;
         } else if development.is_some() {
             session.pause_playback();
             self.message = format!(
@@ -760,6 +832,18 @@ impl OrganizerClient {
             self.message.clear();
         }
         Ok(StatusDisposition::Installed)
+    }
+
+    /// What a new snapshot announces: the hearing's records first, then the county's session.
+    fn period_notice(&self, snapshot: &OrganizerSnapshot) -> Option<String> {
+        hearing_update(self.view.as_ref(), &snapshot.view)
+            .map(str::to_owned)
+            .or_else(|| county_update(self.county_review.as_ref(), snapshot.county_review.as_ref()))
+    }
+
+    fn install_county(&mut self, county: Option<CountyReviewProjection>) {
+        super::county::keep_page(self, county.as_ref());
+        self.county_review = county;
     }
 
     fn install_body(

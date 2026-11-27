@@ -31,6 +31,7 @@ use babylon_kernel::replay::ReplaySessionId;
 pub(crate) fn config() -> OrganizerConfig {
     OrganizerConfig {
         hearing: None,
+        review: None,
         schema_version: ORGANIZER_SCHEMA_VERSION,
         collection: None,
         time_binding: OrganizerTimeBindingMode::FixedTimeControl,

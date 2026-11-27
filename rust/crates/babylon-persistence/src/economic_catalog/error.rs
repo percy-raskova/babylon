@@ -1,5 +1,6 @@
 //! Refusals at the captured source and deterministic initialization boundary.
 use super::SourceArtifactKind;
+use crate::national_economy::county_review::CountyReviewCaptureError;
 use crate::national_economy::NationalOpeningError;
 use babylon_bsl::scenario::ScenarioError;
 use babylon_material_circuit::MaterialCircuitError;
@@ -32,8 +33,13 @@ pub enum EconomicCatalogError {
     NationalOpening(NationalOpeningError),
     Foundation,
     Arithmetic,
+    /// A policy of twelve trades carries a company-scale experiment, which only the ten-trade
+    /// world compiles.
+    ExperimentOnTwelveTrades,
     Circuit(MaterialCircuitError),
     Staffing(MaterialStaffingError),
+    /// The county review could not be captured from the opening.
+    CountyReview(CountyReviewCaptureError),
 }
 impl std::fmt::Display for EconomicCatalogError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {

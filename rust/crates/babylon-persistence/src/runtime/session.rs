@@ -52,6 +52,7 @@ use crate::CurrentSchemaIdentity;
 use crate::FoundationContentError;
 use crate::SemanticArchiveError;
 use babylon_graph::stable_element::StableElementKey;
+use babylon_graph::stable_state::StableGraphState;
 use babylon_kernel::content_digest;
 use babylon_tick::material_replay::PreparedMaterialTick;
 use postgres::CopyInWriter;
@@ -779,7 +780,12 @@ pub(crate) fn insert_typed_tick_pre_marker_rows(
         ),
         "insert action batch",
     )?;
-    insert_typed_graph_rows(client, campaign_id, resolve_tick, report)?;
+    insert_typed_graph_rows(
+        client,
+        campaign_id,
+        resolve_tick,
+        report.result_stable_graph(),
+    )?;
     insert_typed_material_rows(client, campaign_id, resolve_tick, report)?;
     insert_choice_receipt_rows(client, campaign_id, resolve_tick, report)?;
     insert_typed_event_rows(client, campaign_id, resolve_tick, report)?;
@@ -804,9 +810,9 @@ pub(crate) fn insert_typed_graph_rows(
     client: &mut impl GenericClient,
     campaign_id: CampaignId,
     resolve_tick: i64,
-    report: &IdentifiedTickReport,
+    graph: &StableGraphState,
 ) -> Result<(), RustPersistenceRuntimeError> {
-    let rows = report.result_stable_graph().rows();
+    let rows = graph.rows();
     crate::graph_storage::insert(
         client,
         campaign_id,
@@ -878,16 +884,16 @@ pub(crate) fn insert_typed_graph_rows(
         }
     }
     finish_binary_copy(writer, expected, "finish graph hyperedge member copy")?;
-    insert_graph_value_rows(client, campaign_id, resolve_tick, report)
+    insert_graph_value_rows(client, campaign_id, resolve_tick, graph)
 }
 
 pub(crate) fn insert_graph_value_rows(
     client: &mut impl GenericClient,
     campaign_id: CampaignId,
     resolve_tick: i64,
-    report: &IdentifiedTickReport,
+    graph: &StableGraphState,
 ) -> Result<(), RustPersistenceRuntimeError> {
-    let rows = report.result_stable_graph().rows();
+    let rows = graph.rows();
     for (edge_type, source, target, qname, bits) in rows.edge_f64() {
         let value_bits = bit_pattern_i64(*bits);
         require_single_insert(
@@ -942,6 +948,25 @@ pub(crate) fn insert_graph_value_rows(
                 ],
             ),
             "insert graph hyperedge f64",
+        )?;
+    }
+    for (local_name, member, qname, bits) in rows.membership_f64() {
+        let value_bits = bit_pattern_i64(*bits);
+        require_single_insert(
+            client.execute(
+                "INSERT INTO babylon_state.graph_hyperedge_member_f64_v1 \
+                 (campaign_id, resolve_tick, local_name, member, qname, value_bits) \
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6)",
+                &[
+                    campaign_id.as_uuid(),
+                    &resolve_tick,
+                    local_name,
+                    member,
+                    qname,
+                    &value_bits,
+                ],
+            ),
+            "insert graph membership f64",
         )?;
     }
     Ok(())

@@ -32,6 +32,7 @@ use babylon_material_circuit::{
     StaffingError, StaffingMemberBinding, StaffingMemberId, StaffingPolicy, StaffingPoolBinding,
     StaffingPoolId, StaffingWorkRequest, StaffingWorkSource, UnitId,
 };
+use std::collections::BTreeMap;
 
 struct Fixture {
     graph: HypergraphStore,
@@ -72,6 +73,7 @@ impl Fixture {
         Self {
             graph,
             types: TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields: scenario.fields,
                 exemptions: &[],
             },

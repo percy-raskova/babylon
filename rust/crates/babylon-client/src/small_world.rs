@@ -1,0 +1,23 @@
+//! The small world in the client: a period of the doubled world read as hours, goods and
+//! payments, and the table that sums those readings.
+
+pub mod controls;
+pub mod frame;
+pub mod frame_time;
+pub mod inspect;
+pub mod layout;
+pub mod marks;
+pub mod panel;
+pub mod reading;
+pub mod rules;
+pub mod scene;
+pub mod script;
+pub mod table;
+
+pub use reading::{
+    read_period, GoodsMove, Party, Payment, PaymentKind, PeriodReading, ReadingError, WorkFlow,
+};
+pub use scene::{
+    install_scene, open_on_first_period, SceneCommand, SceneRunner, SceneStatus, SmallWorldPlugin,
+};
+pub use table::{hours_table, table, Grouping, HoursRow, HoursTable, Table, TableRow};

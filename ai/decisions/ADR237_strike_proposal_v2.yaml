@@ -115,3 +115,4 @@ ADR237_strike_proposal_v2:
     - ADR220_rust_owned_postgresql_persistence_boundary
     - ADR223_whole_tick_atomicity_world_hash
     - ADR229_rust_gameplay_contract_authority
+    - ADR323_the_pay_fight

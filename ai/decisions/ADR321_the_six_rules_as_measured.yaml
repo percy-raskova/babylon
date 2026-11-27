@@ -1,0 +1,199 @@
+ADR321_the_six_rules_as_measured:
+  title: The six rules are built as measured; the test is scored where there is a fund; a rule turns on at any period
+  date: '2026-11-23'
+  status: accepted
+  issue: PER-371
+  evidence_class: Designed
+  authority:
+    - >-
+        Director, 2026-11-23, typed after the lead's report of the reference
+        rows of the closest form: "ask me the questions you need rulings on as
+        pop ups".
+    - >-
+        Director, 2026-11-23, in the question dialog, asked which rule is
+        built for the step down of a goods price: "As measured".
+    - >-
+        Director, 2026-11-23, in the question dialog, asked how the test
+        economy with no benefits fund is scored when a clinic stays shut for
+        good: "Play, as you ruled".
+    - >-
+        Director, 2026-11-23, in the question dialog, asked when the player
+        may turn a rule's switch in the scene: "On anytime, off by restart".
+    - >-
+        Director, 2026-11-23, in the question dialog, asked whether the look
+        of the scene's real window stands after the lead's tuning: "Yes, go
+        on".
+  context: |
+    The plan for the closest form (ADR319's next step) begins by remaking
+    every reference set of rows, and gates the build on the Director's test.
+    Its first runs, on the prototype's own engine, found two things.
+
+    The lead's words were not the measured rule. On 22 November the preview
+    of the option the Director picked said a goods price steps down "to its
+    cost and no lower". Round ten's rule steps down to the policy's minimum,
+    $1. The lead had judged that the floor should be cost and never measured
+    it. With that floor the last form fails line (3) of the test at both sets
+    of figures; as measured it passes.
+
+    The rounds used a queue order the engine does not have. Round nine's
+    measuring aid made each copy of the doubled test economy queue its buyers
+    as the one-copy economy did. The engine and the built crate of small
+    worlds queue by their own identities. In that order the form as measured
+    still passes at the country's figures and fails line (3) in one run of 25
+    at the small figures.
+
+    Every failure is one kind, in one world: a clinic shut for good in the
+    test economy with NO benefits fund. Counted over all 23 long clinic stops
+    there: care is the last thing a household buys; in a squeeze there comes
+    a period when no household buys it; the clinic had planned as many hours
+    as its money could pay, pays wages and power for them and uses none,
+    since care cannot be stored; its money falls to a few dollars in that one
+    period; with no money there is no work; and its owner restarts it only
+    from spare money, while customers wait. In the world with a fund, which
+    is the scene's world and the game's opening, no workplace is shut at the
+    end in any of 104 runs, with or without the floor, in either order.
+
+    The same rows, in the engine's own order, show what the rules do. With no
+    new rule four runs of the fund world leave a place without a product for
+    good; with the whole form none does, and the mean of hours worked rises
+    from 340 to 440 of 480 at the small figures.
+  decision: |
+    K1. THE STEP DOWN IS BUILT AS MEASURED. In the Director's pick: "A seller
+    with unsold stock keeps cutting, even under its cost, and pays the loss
+    from its own money. This is the rule the ten rounds measured, and the one
+    behind the verdict you were shown." A goods price steps down to the price
+    policy's minimum, as every other step down of the engine does. No floor
+    at cost is built. The seller bears the loss; a seller that runs out of
+    money stops, and that is a scar.
+
+    K2. THE TEST IS SCORED WHERE THERE IS A FUND. In the Director's pick:
+    "The six rules are built as they are. Your test is scored in the world
+    with a fund. A clinic shut for good where there is no fund is reported as
+    a scar of the squeeze you ruled as play: it lasts until workers win pay,
+    which is designed next." The world with no fund stays on the bench and is
+    counted in every record.
+
+    K3. A RULE'S SWITCH TURNS ON AT ANY PERIOD AND OFF BY STARTING OVER. In
+    the Director's pick: "A rule turned on works from the next period and
+    holds until you start over, as the power cut does. You can let a slump
+    run, turn a rule on, and watch what changes. The bench proves each set of
+    rules from period 1; a rule turned on later is seen on screen, not
+    measured." A rule that needs another waits for it.
+
+    K4. THE LOOK STANDS. The scene's real window, as the lead tuned it after
+    its first capture, is the look. In the Director's pick: "After tasks 8
+    and 9 I look at the complete window, with the table and the buttons in
+    it, and show you again before the six rules get their switches."
+  amends:
+    - >-
+        ADR319, J2: lines (2) and (3) are scored over the runs of the world
+        with a benefits fund, at both sets of figures. The runs of the world
+        with no fund are counted the same way and reported under J3. Line (1)
+        is read in both calm worlds, as before.
+    - >-
+        The plan for the closest form
+        (docs/superpowers/plans/2026-11-23-adjust-2-the-closest-form.md): its
+        last task builds the step down with no floor at cost; its reference
+        set of the whole form is the form as measured; the floored rows are
+        kept for the record only; its gate is the test as scored here.
+    - >-
+        ADR320, the second step of its order ("the six rules, each with a
+        switch in the scene"): how a switch acts is K3.
+  lead_readings_for_the_director_to_check:
+    - >-
+        Scored where there is a fund: a form passes when line (1) holds in
+        both calm worlds and lines (2) and (3) hold in every run of the fund
+        world, at the small figures and at the country's. "For good" is read
+        as before: nothing made or sold in each of the last ten of 400
+        periods.
+    - >-
+        What is reported of the world with no fund: each workplace that stood
+        ten periods or more without output, from which period to which,
+        whether it reopened, and what the restart's test answered while it
+        stood.
+    - >-
+        The lead's reading, shown in the preview of K2 as the lead's and left
+        unchanged by the Director: a place with no fund can lose a product
+        for good until someone organizes or lends.
+    - >-
+        A rule that needs another: the stop rule (no money, no work) needs
+        people looking for work in their place; the owner's restart needs the
+        stop rule, the resting price and the bound on hiring. These are the
+        prototype's own refusals. The other rules need none.
+    - >-
+        From the next period: a switch turned while period N is shown acts in
+        the close of period N + 1. Starting over clears every rule and every
+        shock.
+    - >-
+        Not measured: the bench proves a set of rules from period 1. A rule
+        turned on later runs the same code from a state no bench run reached.
+        No record and no words of the scene say the bench proved it.
+  consequences:
+    - >-
+        Counted on the prototype's engine in the engine's own queue order,
+        scored as K2 has it: the whole form passes at both sets of figures,
+        as measured and with the floor. Reported of the world with no fund: as
+        measured, one run of 24 leaves a clinic shut for good; with the floor
+        at cost, four of 24.
+    - >-
+        Each step of the form, small figures, the engine's own order: no new
+        rule, 6 runs with a lasting failure and 340 hours of 480; looking for
+        work alone, 8 runs and 216 hours; with the bound, 6 and 340; with the
+        stop rule, the resting price and the mended restart, 1 and 405; with
+        the step down as measured, 1 and 440.
+    - >-
+        The verdicts of rounds nine and ten on the doubled test economy rest
+        on the measuring aid's queue order. They are not counted again. The
+        reference rows of the build are made without the aid.
+    - >-
+        The floor's switch stays on the scratch branch of the reference rows,
+        proven to change nothing when unset, and is set only for the record's
+        floored sets. Nothing of it is built.
+  alternatives_rejected:
+    - >-
+        "To cost, no lower": the lead's words of 22 November. A seller never
+        sells at a loss, and stock that does not sell at cost stays unsold.
+        Offered in the dialog, not picked.
+    - >-
+        "Both, as a switch": both forms of the step down built, with one more
+        switch in the scene. Offered in the dialog, not picked.
+    - >-
+        "A failure: must reopen": no rule built until a way for a shut
+        workplace with waiting customers to reopen by itself is designed and
+        measured, which reopens the measurement the Director closed. Offered
+        in the dialog, not picked.
+    - >-
+        "Play, and shown on screen": as K2, with a switch in the scene that
+        takes the fund away. Offered in the dialog, not picked.
+    - >-
+        "Set before the run": the rules are picked, then the run starts, and
+        a change means starting over. Offered in the dialog, not picked.
+    - >-
+        "On and off anytime": a rule can also be turned off in the middle of
+        a run. Offered in the dialog, not picked.
+  open_questions:
+    - >-
+        Today's engine is not counted yet: the first runs were on the
+        prototype's engine, where the prototype's own spare-money rule stands
+        in place of the game's. If a workplace is left without a product for
+        good in the fund world on today's engine, the rows go to the Director
+        before any rule is built.
+    - >-
+        What each rule needs so that it can be turned on in the middle of a
+        run (the seekers' rows at every workplace of a place, a standing that
+        starts empty, the runner's cache of catalogs). Settled in the plan's
+        companion tasks before the first rule is built.
+    - >-
+        How organized workers answer a squeeze and win pay (A16). Not designed
+        yet; the Director rules on it when it is (ADR319).
+  verification: |
+    The record of the reference rows states, for every set, the three lines
+    by world, and lists every long stop of a workplace. Each rule's task
+    reproduces its set of rows byte for byte before it merges. The lead looks
+    at the complete scene window after its last two tasks and shows the
+    Director before the rules get their switches.
+  related:
+    - ADR314_how_the_economy_adjusts
+    - ADR318_who_carries_a_losing_workplace
+    - ADR319_a_shock_is_not_a_failure
+    - ADR320_screen_first_the_small_world_in_the_client

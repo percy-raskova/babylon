@@ -5,8 +5,9 @@ use crate::national_economy::grain::NationalGrainError;
 use crate::national_economy::grain::OpeningProductiveEndowment;
 use babylon_material_circuit::AccountId;
 
+use super::fund::Indices;
 use super::{
-    actors, aid, claimant, external, financial, household_time, markets, routes, templates,
+    actors, aid, claimant, external, financial, fund, household_time, markets, routes, templates,
 };
 
 use super::super::{GameCommodity, NationalGamePolicy};
@@ -25,11 +26,12 @@ use crate::national_household_allocation::{HouseholdAllocationError, HouseholdBu
 use crate::national_households::NationalHouseholdReference;
 use crate::national_resident_allocation::AllocationError;
 use crate::national_resident_workforce::NationalResidentWorkforceReference;
+use crate::national_trade_pay::NationalTradePayReference;
 use crate::national_transport::NationalTransportReference;
 use crate::world_reference::WorldReference;
 
 use babylon_kernel::currency::Currency;
-use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
+use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership, TradeSet};
 use babylon_kernel::economic_location::EconomicLocation;
 
 use babylon_material_circuit::{
@@ -87,19 +89,6 @@ impl std::error::Error for NationalOpeningError {}
 
 pub(in crate::national_economy) type Result<T> = std::result::Result<T, NationalOpeningError>;
 
-pub(in crate::national_economy) const FUNCTIONS: [EconomicFunction; 10] = [
-    EconomicFunction::BusinessServices,
-    EconomicFunction::CapitalGoods,
-    EconomicFunction::ConstructionHousing,
-    EconomicFunction::DistributionTransport,
-    EconomicFunction::EnergyUtilities,
-    EconomicFunction::Extraction,
-    EconomicFunction::Food,
-    EconomicFunction::HouseholdServices,
-    EconomicFunction::Manufacturing,
-    EconomicFunction::PublicProvisioning,
-];
-
 /// Initialization-only facts. Durable people and plans belong to graph/material state.
 #[derive(Clone, Debug)]
 pub(in crate::national_economy) struct ActorContext {
@@ -118,6 +107,10 @@ pub(in crate::national_economy) struct ActorContext {
 
 pub(in crate::national_economy) struct Builder<'a> {
     pub(in crate::national_economy) policy: &'a NationalGamePolicy,
+    /// The pay table: `Some` exactly under `GameWages::Observed`.
+    pub(in crate::national_economy) pay: Option<&'a NationalTradePayReference>,
+    /// The wage of each domestic site under `GameWages::Observed`; empty under `Single`.
+    pub(in crate::national_economy) workplace_wages: BTreeMap<SiteId, Currency>,
     pub(in crate::national_economy) endowments: BTreeMap<SiteId, OpeningProductiveEndowment>,
     pub(in crate::national_economy) financial_domains: BTreeMap<AccountId, FinancialDomainId>,
     pub(in crate::national_economy) aid: NationalAidCapture,
@@ -131,6 +124,10 @@ pub(in crate::national_economy) struct Builder<'a> {
     pub(in crate::national_economy) actors: BTreeMap<SiteId, ActorContext>,
     pub(in crate::national_economy) sites: BTreeMap<SiteId, usize>,
     pub(in crate::national_economy) logistics_nodes: BTreeMap<EconomicLocation, LogisticsNodeId>,
+    /// The luxury scale of each account the scenario names, found once, after the households exist.
+    pub(in crate::national_economy) luxury_scales: BTreeMap<FinalDemandPrincipalId, u32>,
+    /// Indices of the final rows, built once when the fund's programs are worked out.
+    pub(in crate::national_economy) fund_indices: Indices,
     offer_indices: BTreeMap<(SiteId, GoodId, UnitId), usize>,
     procurement_indices: BTreeMap<(SiteId, SiteId, GoodId, UnitId), usize>,
 }
@@ -140,6 +137,8 @@ pub(in crate::national_economy) struct Builder<'a> {
 pub struct NationalOpeningPolicy<'a> {
     pub policy: &'a NationalGamePolicy,
     pub ages: Option<&'a NationalAgeReference>,
+    /// The pay table: `Some` exactly when the policy's trades are the twelve.
+    pub pay: Option<&'a NationalTradePayReference>,
     pub source_hash: [u8; 32],
 }
 
@@ -161,8 +160,11 @@ pub fn build_national_opening(
         policy,
         source_hash: policy_source_hash,
         ages,
+        pay,
     } = captured_policy;
-    if u64::from(transport.period_days()) != policy.period_days {
+    if u64::from(transport.period_days()) != policy.period_days
+        || pay.is_some() != (policy.trades == TradeSet::Twelve)
+    {
         return Err(NationalOpeningError::Policy);
     }
     let household_budgets = national_household_allocation::allocate_households(
@@ -170,6 +172,7 @@ pub fn build_national_opening(
         household_margins,
         residents,
         policy.households.private_owner_households_bps,
+        policy.households.next_forty_households_bps,
     )
     .map_err(NationalOpeningError::Households)?;
     let time_controls =
@@ -188,9 +191,10 @@ pub fn build_national_opening(
         &household_budgets,
         &leaf_roster,
         policy,
+        pay,
     )
     .map_err(NationalOpeningError::Workforce)?;
-    let mut builder = Builder::new(policy, transport, support_claimant)?;
+    let mut builder = Builder::new(policy, pay, transport, support_claimant)?;
     aid::prepare(
         &mut builder,
         &household_budgets,
@@ -247,13 +251,17 @@ impl<'a> Builder<'a> {
             builder.support_claimant.as_ref(),
             policy,
             &membership,
+            builder.pay,
         )
         .map_err(NationalOpeningError::Grain)?;
         let companies = policy
             .companies
             .map(|targets| {
-                let base =
-                    companies::from_workplaces(&roster.workplaces.workplaces, targets.employment)?;
+                let base = companies::from_workplaces(
+                    policy.trades,
+                    &roster.workplaces.workplaces,
+                    targets.employment,
+                )?;
                 match targets.experiment {
                     Some(population) => companies::partition(base, population),
                     None => Ok(base),
@@ -262,6 +270,7 @@ impl<'a> Builder<'a> {
             .transpose()
             .map_err(NationalOpeningError::Companies)?;
         builder.endowments = roster.workplace_endowments;
+        builder.workplace_wages = roster.workplace_wages;
         builder.financial_domains = roster.financial_domains;
         actors::domestic(
             &mut builder,
@@ -275,9 +284,11 @@ impl<'a> Builder<'a> {
         markets::wire(&mut builder)?;
         actors::validate_people(&builder.opening)?;
         financial::wire(&mut builder)?;
+        fund::wire(&mut builder)?;
         routes::finish(&mut builder)?;
         household_time::wire(&mut builder, time_controls)?;
         sort_principals(&mut builder);
+        wire_wants(&mut builder)?;
         builder
             .opening
             .policies
@@ -304,6 +315,7 @@ impl<'a> Builder<'a> {
             companies,
             opening: builder.opening,
             household_keys: builder.household_keys,
+            workplace_wages: builder.workplace_wages,
             aid: builder.aid,
             support_claimant: builder.support_claimant,
             detail,
@@ -330,6 +342,7 @@ impl<'a> Builder<'a> {
     }
     pub(super) fn new(
         policy: &'a NationalGamePolicy,
+        pay: Option<&'a NationalTradePayReference>,
         transport: &'a NationalTransportReference,
         support_claimant: Option<NationalSupportClaimant>,
     ) -> Result<Self> {
@@ -340,6 +353,8 @@ impl<'a> Builder<'a> {
             templates::compile(policy, labor_unit)?;
         Ok(Self {
             policy,
+            pay,
+            workplace_wages: BTreeMap::new(),
             endowments: BTreeMap::new(),
             financial_domains: BTreeMap::new(),
             aid: NationalAidCapture::default(),
@@ -363,9 +378,12 @@ impl<'a> Builder<'a> {
                 })
                 .map(|node| (node.location(), actors::node_id(node.id())))
                 .collect(),
+            luxury_scales: BTreeMap::new(),
+            fund_indices: Indices::default(),
             offer_indices: BTreeMap::new(),
             procurement_indices: BTreeMap::new(),
             opening: EconomicOpening {
+                market_clearing: templates::market_clearing(policy)?,
                 commodity_labels,
                 commodities,
                 recipes,
@@ -438,6 +456,20 @@ impl<'a> Builder<'a> {
             self.opening.policies.offers.push(offer);
         }
     }
+    /// The offer a seller posts for a good. Valid once `markets::wire` has sorted the offers (it sorts them
+    /// last, after which no offer is written); the offer indices are not kept through that sort.
+    pub(in crate::national_economy) fn offer(
+        &self,
+        site: SiteId,
+        good: GoodId,
+        unit: UnitId,
+    ) -> Option<&SellerOffer> {
+        let offers = &self.opening.policies.offers;
+        offers
+            .binary_search_by_key(&(site, good, unit), |o| (o.site_id, o.good_id, o.unit_id))
+            .ok()
+            .and_then(|index| offers.get(index))
+    }
     pub(in crate::national_economy) fn add_procurement(
         &mut self,
         row: ReplenishmentPolicy,
@@ -506,10 +538,30 @@ pub struct NationalOpening {
     pub opening: EconomicOpening,
     /// Opening budget identity by exact admitted household principal.
     pub(crate) household_keys: BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
+    /// The wage each domestic site pays under `GameWages::Observed` (empty under `Single`): the census reads
+    /// the wage of a site with no employee, which no row of the opening holds.
+    pub(crate) workplace_wages: BTreeMap<SiteId, Currency>,
     pub aid: NationalAidCapture,
     pub support_claimant: Option<NationalSupportClaimant>,
     /// Authored foreground identities and conserved counted background cohorts.
     pub detail: NationalDetailPartition,
+}
+
+/// Fill the market policy's wants from the accounts, now in canonical order. A policy that clears by
+/// price has wants only under schema 8.
+fn wire_wants(builder: &mut Builder<'_>) -> Result<()> {
+    if builder.opening.market_clearing.is_none() {
+        return Ok(());
+    }
+    let wants = templates::household_wants(
+        builder.policy,
+        &builder.opening.households,
+        &builder.luxury_scales,
+    )?;
+    if let Some(clearing) = builder.opening.market_clearing.as_mut() {
+        clearing.household_wants = wants;
+    }
+    Ok(())
 }
 
 fn sort_principals(builder: &mut Builder<'_>) {

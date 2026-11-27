@@ -18,6 +18,10 @@ pub enum HouseholdBudgetKey {
     CollectiveResidence = 5,
     /// Explicit first-version abstraction for foreign and dependency residents.
     PooledExternal = 6,
+    /// Schema 8: the lower-paid half of a county's earning households (rule O17).
+    EarningLowerPaidHalf = 7,
+    /// Schema 8: the better-paid forty percent of a county's earning households (rule O17).
+    EarningBetterPaidForty = 8,
 }
 impl HouseholdBudgetKey {
     #[must_use]
@@ -27,7 +31,13 @@ impl HouseholdBudgetKey {
     /// Whether the cohort carries a captured historical earning.
     #[must_use]
     pub const fn earning(self) -> bool {
-        matches!(self, Self::EarningNonowner | Self::EarningOwner)
+        matches!(
+            self,
+            Self::EarningNonowner
+                | Self::EarningOwner
+                | Self::EarningLowerPaidHalf
+                | Self::EarningBetterPaidForty
+        )
     }
     /// Whether the cohort is collective residence rather than occupied households.
     #[must_use]
@@ -53,6 +63,8 @@ impl HouseholdBudgetKey {
             Self::NoEarnerOwner => "no-earner-owner",
             Self::CollectiveResidence => "collective-residence",
             Self::PooledExternal => "pooled-external",
+            Self::EarningLowerPaidHalf => "earning-lower-paid-half",
+            Self::EarningBetterPaidForty => "earning-better-paid-forty",
         }
     }
 }
@@ -107,6 +119,7 @@ impl CountyHouseholdAllocation {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NationalHouseholdAllocation {
     pub(crate) private_owner_households_bps: u16,
+    pub(crate) next_forty_households_bps: Option<u16>,
     pub(crate) county_source_sha256: [u8; 32],
     pub(crate) classes_source_sha256: [u8; 32],
     pub(super) household_source_sha256: [u8; 32],

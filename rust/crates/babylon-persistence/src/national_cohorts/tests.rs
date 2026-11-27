@@ -1,7 +1,7 @@
 //! Semantic refusals remain visible beneath the outer exact-artifact digest.
 use super::mapping::FunctionMapping;
 use super::NationalCohortReferenceError as Error;
-use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::economic_identity::{EconomicFunction, TradeSet};
 
 use super::parse;
 use super::CohortReference;
@@ -12,7 +12,21 @@ fn row(text: &str) -> Result<CohortReference, Error> {
         text,
         &FunctionMapping::load()?,
         national_counties::national_county_reference().map_err(Error::CountyReference)?,
+        TradeSet::Ten,
     )
+}
+
+#[test]
+fn a_version_1_table_that_names_consumer_goods_is_refused_by_the_parser() {
+    // The parser reads each trade with the table's own set, before the mapping is asked.
+    assert_eq!(
+        row("01017,consumer_goods,5,0,1,0,1,0,0,0,0,311~N~0~~~"),
+        Err(Error::Function)
+    );
+    assert_eq!(
+        row("01017,leisure_hospitality,5,0,1,0,1,0,0,0,0,311~N~0~~~"),
+        Err(Error::Function)
+    );
 }
 
 #[test]
@@ -129,7 +143,8 @@ fn duplicate_groups_are_refused_before_coverage_checks() {
             &duplicate,
             &FunctionMapping::load().expect("the fixture artifact loads"),
             national_counties::national_county_reference()
-                .expect("the county reference fixture loads")
+                .expect("the county reference fixture loads"),
+            super::artifact::table_pins(babylon_kernel::economic_identity::TradeSet::Ten),
         ),
         Err(Error::GroupOrder)
     );
@@ -154,6 +169,33 @@ fn economic_function_display_labels_match_pinned_mapping() {
     for captured in mapping.functions {
         let function = EconomicFunction::from_source_key(&captured.id)
             .expect("every captured function has a typed identity");
+        assert_eq!(function.label(), captured.label);
+        assert_eq!(function.source_key(), captured.id);
+    }
+}
+
+#[test]
+fn twelve_trade_labels_match_the_v2_mapping() {
+    use babylon_kernel::economic_identity::TradeSet;
+    #[derive(serde::Deserialize)]
+    struct CapturedMapping {
+        functions: Vec<CapturedFunction>,
+    }
+    #[derive(serde::Deserialize)]
+    struct CapturedFunction {
+        id: String,
+        label: String,
+    }
+
+    FunctionMapping::load_for(TradeSet::Twelve)
+        .expect("mapping matches the pinned artifact digest");
+    let mapping: CapturedMapping = serde_json::from_slice(super::mapping::DOCUMENT_V2)
+        .expect("captured mapping is valid JSON");
+    assert_eq!(mapping.functions.len(), 12);
+    for captured in mapping.functions {
+        let function = TradeSet::Twelve
+            .from_source_key(&captured.id)
+            .expect("every captured function is known to the twelve trades");
         assert_eq!(function.label(), captured.label);
         assert_eq!(function.source_key(), captured.id);
     }

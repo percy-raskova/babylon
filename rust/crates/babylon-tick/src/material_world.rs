@@ -6,6 +6,10 @@
 mod agency_paid_receipt;
 mod city_pd;
 pub(crate) mod city_pd_execution;
+mod county_review;
+pub(crate) mod county_review_execution;
+#[cfg(test)]
+mod county_review_tests;
 
 mod aid_receipt;
 
@@ -53,6 +57,9 @@ mod register;
 pub use agency_paid_receipt::{validate_committed_nonpaid, AgencyPaidReceipt};
 pub use city_pd::{
     CityPdAttempt, CityPdRegister, CityPdRegisterError, DecodedCityPdAttemptEvidence,
+};
+pub use county_review::{
+    CountyGroupLabor, CountyLaborFacts, CountyReviewRegister, CountyReviewRegisterError,
 };
 use register::ReceiptCursor;
 #[cfg(test)]

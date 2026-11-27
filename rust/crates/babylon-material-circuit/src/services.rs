@@ -7,11 +7,14 @@ mod market;
 
 mod model;
 
+mod tiers;
+
 mod validation;
 
 pub use admission::{recurring_service_order_id, recurring_service_topup_order_id};
+pub(crate) use admission::{requests, Request};
 
-pub(crate) use close::ServiceClose;
+pub(crate) use close::{potential_output, ServiceClose};
 
 pub use model::*;
 
@@ -21,7 +24,8 @@ pub(crate) use validation::{canonicalize, validate};
 mod requirements;
 
 pub(crate) use requirements::{
-    input_requirements, is_service, kind, planning_grants, required_input, stage, Result,
+    input_requirements, is_service, kind, planning_grants, required_inputs, shared_availability,
+    shared_price, stage, Result,
 };
 
 use crate::{GoodId, MaterialCircuitError, MaterialCircuitState, UnitId};

@@ -219,6 +219,7 @@ pub(super) fn decode_market(
             [3] => ServicePriceDecision::FundedUnmet,
             [4] => ServicePriceDecision::CostPressure,
             [5] => ServicePriceDecision::SpareCapacity,
+            [6] => ServicePriceDecision::PricedOut,
             _ => return Err(MaterialWorldError::Wire),
         },
         planned_quantity: c.u64()?,
@@ -441,6 +442,7 @@ mod engine_test {
             .expect("the fixture opens the authored source");
         let catalog =
             MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+                market_clearing: None,
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 site_logistics_nodes: vec![SiteLogisticsNode {
                     site_id: site,

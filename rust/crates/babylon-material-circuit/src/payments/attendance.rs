@@ -137,6 +137,12 @@ impl AttendanceLedger {
     pub(crate) fn members(&self) -> &[MemberLaborUseReceipt] {
         &self.members
     }
+    /// The member rows of one site and labor unit: the run the ledger was opened with, found by key.
+    pub(crate) fn of_site_unit(&self, site: SiteId, unit: UnitId) -> &[MemberLaborUseReceipt] {
+        self.groups
+            .get(&(site, unit))
+            .map_or(&[], |range| &self.members[range.clone()])
+    }
     pub(crate) fn consume(
         &mut self,
         site: SiteId,
@@ -412,4 +418,20 @@ fn fund_member_attendance(
         maintenance_wages: zero,
         idle_wages: wages,
     })
+}
+
+#[cfg(test)]
+impl AttendanceLedger {
+    /// A ledger of the given member rows, for tests of what reads them. The rows of one site and
+    /// labor unit lie together, as the ledger lays them.
+    pub(crate) fn from_members(members: Vec<MemberLaborUseReceipt>) -> Self {
+        let mut groups: BTreeMap<(SiteId, UnitId), Range<usize>> = BTreeMap::new();
+        for (index, row) in members.iter().enumerate() {
+            groups
+                .entry((row.site_id, row.unit_id))
+                .and_modify(|range| range.end = index + 1)
+                .or_insert(index..index + 1);
+        }
+        Self { members, groups }
+    }
 }

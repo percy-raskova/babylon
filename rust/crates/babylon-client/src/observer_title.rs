@@ -21,6 +21,8 @@ use crate::ui;
 use crate::ui::Interaction;
 use crate::visual_assets::VisualAssets;
 use bevy::picking::pointer::PointerButton;
+use std::path::Path;
+use std::process::{Child, Command, Stdio};
 
 #[derive(Component)]
 pub(crate) struct TitleMenuRoot;
@@ -40,6 +42,7 @@ enum TitleAction {
     Continue,
     NewGame,
     MichiganControl,
+    SmallWorld,
     LoadGame,
     Campaigns,
     Settings,
@@ -54,6 +57,62 @@ enum TitleAction {
 /// Activate the ordinary Continue control from an explicitly enabled harness.
 #[derive(Event)]
 pub(crate) struct ContinueTitle;
+
+/// Start the small test economy as its own process: it has no campaign, pipe or database.
+#[derive(Event, Clone, Copy, Debug)]
+pub(crate) struct OpenSmallWorld;
+
+/// The small world's process while it runs, and why one could not start.
+#[derive(Resource, Default)]
+pub(crate) struct SmallWorldProcess {
+    child: Option<Child>,
+    failure: Option<String>,
+}
+
+/// The client's own executable with `--small-world` and no standard streams.
+pub(crate) fn small_world_command(exe: &Path) -> Command {
+    let mut command = Command::new(exe);
+    command
+        .arg("--small-world")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    command
+}
+
+fn open_small_world(_event: On<OpenSmallWorld>, mut process: ResMut<SmallWorldProcess>) {
+    if process
+        .child
+        .as_mut()
+        .is_some_and(|child| matches!(child.try_wait(), Ok(None)))
+    {
+        return;
+    }
+    match std::env::current_exe().and_then(|exe| small_world_command(&exe).spawn()) {
+        Ok(child) => {
+            process.child = Some(child);
+            process.failure = None;
+        }
+        Err(error) => {
+            process.child = None;
+            process.failure = Some(format!("The test economy could not start: {error}"));
+        }
+    }
+}
+
+fn reap_small_world(mut process: ResMut<SmallWorldProcess>) {
+    let Some(child) = process.child.as_mut() else {
+        return;
+    };
+    match child.try_wait() {
+        Ok(None) => {}
+        Ok(Some(_)) => process.child = None,
+        Err(error) => {
+            process.child = None;
+            process.failure = Some(format!("The test economy could not start: {error}"));
+        }
+    }
+}
 
 pub(crate) fn continue_requested(_event: On<ContinueTitle>, mut input: TitleInput) {
     input.activate(TitleAction::Continue);
@@ -229,6 +288,7 @@ fn spawn_home(commands: &mut Commands) {
                         "New Game · Wayne in the national world",
                     ),
                     (TitleAction::MichiganControl, "Michigan · organizer control"),
+                    (TitleAction::SmallWorld, "A test economy · the small world"),
                     (TitleAction::LoadGame, "Load Game"),
                     (TitleAction::Campaigns, "Observer Campaigns"),
                     (TitleAction::Settings, "Settings"),
@@ -313,13 +373,14 @@ fn action_visible(
 }
 
 #[derive(SystemParam)]
-pub(crate) struct TitleInput<'w> {
+pub(crate) struct TitleInput<'w, 's> {
     opening: ResMut<'w, OpeningPresentation>,
     session: Res<'w, ObserverSession>,
     ui: Res<'w, ObserverUiState>,
     commands: MessageWriter<'w, ObserverCommand>,
+    world: Commands<'w, 's>,
 }
-impl TitleInput<'_> {
+impl TitleInput<'_, '_> {
     fn activate(&mut self, action: TitleAction) {
         if !action_visible(action, &self.opening, &self.ui)
             || !action_enabled(action, &self.opening, &self.session)
@@ -336,6 +397,7 @@ impl TitleInput<'_> {
             TitleAction::MichiganControl => {
                 self.commands.write(ObserverCommand::NewOrganizerCampaign);
             }
+            TitleAction::SmallWorld => self.world.trigger(OpenSmallWorld),
             TitleAction::LoadGame => self.opening.menu_page = MenuPage::SavedGames,
             TitleAction::Campaigns => self.opening.menu_page = MenuPage::Campaigns,
             TitleAction::Settings | TitleAction::GameSettings => {
@@ -433,6 +495,7 @@ type TitleRootFilter = Or<(With<TitleMenuRoot>, With<TitleBackdrop>)>;
 
 #[derive(SystemParam)]
 struct TitlePaint<'w> {
+    small_world: Option<Res<'w, SmallWorldProcess>>,
     opening: Res<'w, OpeningPresentation>,
     progress: Option<Res<'w, OperationProgress>>,
     session: Res<'w, ObserverSession>,
@@ -454,6 +517,7 @@ fn paint(
     mut status: Query<&mut Text, With<TitleStatus>>,
 ) {
     let TitlePaint {
+        small_world,
         opening,
         progress,
         session,
@@ -518,7 +582,10 @@ fn paint(
     {
         "Opening campaign…"
     } else {
-        ""
+        small_world
+            .as_deref()
+            .and_then(|process| process.failure.as_deref())
+            .unwrap_or("")
     };
     let pending = progress.as_deref().and_then(OperationProgress::caption);
     for mut text in &mut status {
@@ -558,14 +625,19 @@ pub(crate) struct ObserverTitlePlugin;
 impl Plugin for ObserverTitlePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<OpeningPresentation>()
+            .init_resource::<SmallWorldProcess>()
             .add_systems(Startup, spawn_title)
             .add_observer(focused_action)
+            .add_observer(open_small_world)
             .add_observer(continue_requested)
             .add_systems(
                 PreUpdate,
                 eligibility.in_set(ObserverFocusSystems::Eligibility),
             )
-            .add_systems(Update, keyboard.in_set(ObserverSet::Input))
+            .add_systems(
+                Update,
+                (keyboard, reap_small_world).in_set(ObserverSet::Input),
+            )
             .add_systems(Update, (paint, layout).in_set(ObserverSet::Paint));
     }
 }
@@ -643,6 +715,54 @@ mod tests {
             !app.world().resource::<OpeningPresentation>().launch_pending,
             "only an accepted runtime queue may mark a launch pending"
         );
+    }
+
+    #[derive(Resource, Default)]
+    struct SmallWorldOpened(u32);
+
+    #[test]
+    fn the_title_offers_the_small_world() {
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
+        session.connected_fixture();
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .insert_resource(session)
+        .insert_resource(OpeningPresentation {
+            stage: OpeningStage::Title,
+            ..default()
+        })
+        .insert_resource(ObserverUiState {
+            splash_visible: false,
+            ..default()
+        })
+        .init_resource::<SmallWorldOpened>()
+        .add_message::<ObserverCommand>()
+        .add_observer(focused_action)
+        .add_observer(
+            |_event: On<OpenSmallWorld>, mut opened: ResMut<SmallWorldOpened>| {
+                opened.0 += 1;
+            },
+        )
+        .add_systems(Startup, |mut commands: Commands| spawn_home(&mut commands));
+        app.update();
+        activate(&mut app, TitleAction::SmallWorld);
+        app.update();
+        assert_eq!(app.world().resource::<SmallWorldOpened>().0, 1);
+        assert!(app
+            .world()
+            .resource::<Messages<ObserverCommand>>()
+            .is_empty());
+    }
+
+    #[test]
+    fn the_small_world_starts_as_its_own_process() {
+        let command = small_world_command(Path::new("/x/b"));
+        assert_eq!(command.get_program(), "/x/b");
+        let args: Vec<_> = command.get_args().collect();
+        assert_eq!(args, ["--small-world"]);
     }
 
     fn game_menu_app() -> App {

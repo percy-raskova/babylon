@@ -83,9 +83,9 @@ fn committed_mixed_compensation_keeps_unknown_foundation_and_carries_recorded_la
 
 #[test]
 fn mixed_inventory_preserves_the_floor_remainder_through_transfer_and_depletion() {
-    use super::book::{Book, Frame};
     use super::{LaborBasis, LaborNode, ReceiptRef};
     use babylon_material_circuit::{GoodId, SiteId, UnitId};
+    use babylon_recorded_labor::{Book, Frame};
     let good = GoodId::from_bytes([3; 32]);
     let quantity_unit = UnitId::from_bytes([4; 32]);
     let source = LaborNode::site(SiteId::from_bytes([1; 32]), good, quantity_unit);

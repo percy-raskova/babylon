@@ -36,13 +36,13 @@
 
 use crate::allocator_state::{AllocatorCursors, AllocatorState};
 use crate::stable_element::{StableElementResolver, StableIdentityError};
-use crate::stable_state::StableGraphState;
+use crate::stable_state::{StableGraphState, StableGraphStateRows};
 use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use crate::working_copy::DetachedCopy;
 use babylon_kernel::currency::Currency;
 use hypergraph_rs::Hypergraph;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// The 16-character lowercase zero-padded hex of `id`'s big-endian `u64` —
 /// the library key a [`NodeId`] mints under.
@@ -56,20 +56,18 @@ fn hyperedge_key(id: HyperedgeId) -> String {
 }
 
 /// The membership payload slot `hypergraph-rs`'s `MembershipEdge<M>` carries
-/// on every (member, hyperedge) incidence edge — the `petgraph` edge
-/// weight, structurally the right home for Amendment AG (i) / ADR189's
-/// attributed membership, because the (member, hyperedge) pair it names is
-/// exactly the key this slot hangs on.
+/// on every (member, hyperedge) incidence edge (Amendment AG (i) / ADR189's
+/// attributed membership). The (member, hyperedge) pair it names is exactly
+/// the key a membership's values hang on, and the library removes the slot
+/// with the membership, so no sweep is owed here.
 ///
-/// **Carried, empty, unhashed — nothing in this train writes it.** The
-/// library exposes the slot with zero accessors (six construction sites
-/// hard-code `M::default()`, zero reads —
-/// `percy-raskova/hypergraph-rs#2`, filed Phase B Task 4 Step 4). This type
-/// exists so the slot already sits in the adapter's type when the accessor
-/// lands upstream; the moment an AG task adds a write through it, this
-/// comment is the first thing it must revisit.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-struct MembershipPayload;
+/// An empty map allocates nothing: a world with no membership field costs
+/// no memory and writes no byte.
+#[derive(Debug, Default, Clone, PartialEq)]
+struct MembershipPayload {
+    /// qname -> value; a `BTreeMap` so the listing order is the qname order.
+    fields: BTreeMap<String, f64>,
+}
 
 /// The `hypergraph-rs`-backed [`GraphSubstrate`]/[`CanonicalState`] adapter.
 /// See the module documentation. Nothing but [`Self::new`] is public — a
@@ -238,19 +236,91 @@ impl HypergraphStore {
             hyperedge_attributes.insert((hyperedge, qname.clone()), f64::from_bits(*bits));
         }
 
+        // Everything that can fail is checked before anything is changed: the
+        // listing below names only live memberships, and each is proved to
+        // exist now, so the swap that follows cannot stop partway.
+        let membership_writes = self.restored_membership_payloads(resolver, source)?;
+        if membership_writes
+            .iter()
+            .any(|(edge_key, node, _)| self.inner.member_data(edge_key, node).is_none())
+        {
+            return Err(StableIdentityError::TopologyChanged);
+        }
+
         self.attributes = attributes;
         self.currency_attributes = currency_attributes;
         self.edges = edges;
         self.edge_attributes = edge_attributes;
         self.hyperedge_attributes = hyperedge_attributes;
+        for (edge_key, node, payload) in membership_writes {
+            self.inner
+                .set_member_data(&edge_key, &node, payload)
+                .map_err(|_| StableIdentityError::TopologyChanged)?;
+        }
         Ok(())
     }
 
+    /// Every membership whose value must change to match `source`: the ones
+    /// the checkpoint carries values for, and the ones the live store carries
+    /// values for that the checkpoint does not (they get an empty map). A
+    /// membership with an empty map on both sides is left alone, so a
+    /// field-free world costs nothing here.
+    fn restored_membership_payloads(
+        &self,
+        resolver: &StableElementResolver,
+        source: &StableGraphStateRows,
+    ) -> Result<Vec<(String, String, MembershipPayload)>, StableIdentityError> {
+        let mut carried: HashMap<(String, String), MembershipPayload> = HashMap::new();
+        for (hyperedge_name, member_name, qname, bits) in source.membership_f64() {
+            let hyperedge = resolver.hyperedge_handle_by_local_name(hyperedge_name)?;
+            let member = resolver.node_handle_by_local_name(member_name)?;
+            carried
+                .entry((hyperedge_key(hyperedge), node_key(member)))
+                .or_default()
+                .fields
+                .insert(qname.clone(), f64::from_bits(*bits));
+        }
+        let mut writes = Vec::new();
+        for edge_key in self.hyperedge_keys.keys() {
+            let listed = self
+                .inner
+                .members_with_data(edge_key)
+                .ok_or(StableIdentityError::TopologyChanged)?;
+            for (node, payload) in listed {
+                match carried.remove(&(edge_key.clone(), node.clone())) {
+                    Some(replacement) => writes.push((edge_key.clone(), node, replacement)),
+                    None if !payload.fields.is_empty() => {
+                        writes.push((edge_key.clone(), node, MembershipPayload::default()));
+                    }
+                    None => {}
+                }
+            }
+        }
+        if carried.is_empty() {
+            Ok(writes)
+        } else {
+            Err(StableIdentityError::TopologyChanged)
+        }
+    }
+
+    /// The three existence faults of a membership read or write: no such
+    /// hyperedge, no such node, or a node that is not in the member list.
+    fn require_membership(&self, id: HyperedgeId, member: NodeId) -> Result<(), GraphError> {
+        if self.is_member(id, member)? {
+            Ok(())
+        } else {
+            Err(GraphError {
+                message: format!("{member:?} is not a member of {id:?}"),
+            })
+        }
+    }
+
     /// The frozen pre-check (delta §8 covenant 6, CD4) at the head of every
-    /// one of the 8 mutating [`GraphSubstrate`] methods — `add_node`,
+    /// one of the 11 mutating [`GraphSubstrate`] methods — `add_node`,
     /// `remove_node`, `add_edge`, `remove_edge`, `update_node`,
-    /// `update_edge` (T3, ADR198 R1/R3), `add_hyperedge`,
-    /// `remove_hyperedge` — via the library's public
+    /// `update_node_currency`, `update_edge` (T3, ADR198 R1/R3),
+    /// `add_hyperedge`, `remove_hyperedge`, `update_hyperedge_attribute`,
+    /// `update_membership_attribute` — via the library's public
     /// `is_frozen()`. Nothing in this crate ever freezes `self.inner` (no
     /// `GraphSubstrate` method exposes a freeze verb — that would be
     /// amendment territory, delta §4 CD4), so this is defense against a
@@ -712,6 +782,74 @@ impl GraphSubstrate for HypergraphStore {
             })
     }
 
+    fn update_membership_attribute(
+        &mut self,
+        id: HyperedgeId,
+        member: NodeId,
+        attribute: &str,
+        value: f64,
+    ) -> Result<(), GraphError> {
+        self.check_not_frozen()?;
+        if !value.is_finite() {
+            return Err(GraphError {
+                message: format!(
+                    "non-finite membership attribute {attribute} on {member:?} in {id:?}"
+                ),
+            });
+        }
+        self.require_membership(id, member)?;
+        let edge_key = hyperedge_key(id);
+        let node = node_key(member);
+        let mut payload = self
+            .inner
+            .member_data(&edge_key, &node)
+            .cloned()
+            .unwrap_or_default();
+        // `-0.0` stores as `+0.0`: one value, one set of bytes.
+        let value = if value == 0.0 { 0.0 } else { value };
+        payload.fields.insert(attribute.to_owned(), value);
+        self.inner
+            .set_member_data(&edge_key, &node, payload)
+            .map_err(|e| GraphError {
+                message: format!("membership write of {member:?} in {id:?}: {e}"),
+            })
+    }
+
+    fn membership_attribute(
+        &self,
+        id: HyperedgeId,
+        member: NodeId,
+        attribute: &str,
+    ) -> Result<f64, GraphError> {
+        self.require_membership(id, member)?;
+        self.inner
+            .member_data(&hyperedge_key(id), &node_key(member))
+            .and_then(|payload| payload.fields.get(attribute).copied())
+            .ok_or_else(|| GraphError {
+                message: format!(
+                    "membership attribute {attribute} was never written on {member:?} in {id:?} \
+                     — never a default 0.0"
+                ),
+            })
+    }
+
+    fn is_member(&self, id: HyperedgeId, member: NodeId) -> Result<bool, GraphError> {
+        if self.inner.edge_attrs(&hyperedge_key(id)).is_none() {
+            return Err(GraphError {
+                message: format!("no such hyperedge: {id:?}"),
+            });
+        }
+        if !self.node_exists(member) {
+            return Err(GraphError {
+                message: format!("no such node: {member:?}"),
+            });
+        }
+        Ok(self
+            .inner
+            .member_data(&hyperedge_key(id), &node_key(member))
+            .is_some())
+    }
+
     fn members_of(&self, id: HyperedgeId) -> Result<Vec<NodeId>, GraphError> {
         let key = hyperedge_key(id);
         let members = self.inner.members(&key).ok_or_else(|| GraphError {
@@ -837,6 +975,37 @@ impl CanonicalState for HypergraphStore {
             .iter()
             .map(|((id, name), value)| (*id, name.clone(), *value))
             .collect()
+    }
+
+    /// Walks the library's `edge_ids()` and, once per hyperedge, its
+    /// `members_with_data`, skipping memberships whose map is empty. No id
+    /// scan: the cost is the incidence count times each member's own
+    /// membership count.
+    fn all_membership_attributes(&self) -> Vec<(HyperedgeId, NodeId, String, f64)> {
+        let mut rows = Vec::new();
+        for key in self.inner.edge_ids() {
+            let id = *self.hyperedge_keys.get(&key).unwrap_or_else(|| {
+                panic!(
+                    "internal invariant violated: library edge {key} \
+                     has no HyperedgeId mapping"
+                )
+            });
+            for (member_key, payload) in self.inner.members_with_data(&key).unwrap_or_default() {
+                if payload.fields.is_empty() {
+                    continue;
+                }
+                let member = *self.node_keys.get(&member_key).unwrap_or_else(|| {
+                    panic!(
+                        "internal invariant violated: library member {member_key} \
+                         has no NodeId mapping"
+                    )
+                });
+                for (name, value) in &payload.fields {
+                    rows.push((id, member, name.clone(), *value));
+                }
+            }
+        }
+        rows
     }
 
     /// Walks the library's `edge_ids()`, maps each through the identity

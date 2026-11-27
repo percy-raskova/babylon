@@ -96,6 +96,7 @@ pub fn import_michigan_opening(catalog: &MichiganMaterialCatalog) -> Result<Econ
         .collect::<Result<_>>()?;
     let (logistics, orders, capacity) = import_logistics(catalog)?;
     Ok(EconomicOpening {
+        market_clearing: None,
         commodity_labels: catalog
             .goods()
             .iter()
@@ -196,6 +197,7 @@ fn import_site(
                     good_id: amount.good_id,
                     unit_id: amount.unit_id,
                     hours_per_unit: *hours,
+                    units: 1,
                 });
             }
             Ok(MerchantSeed {

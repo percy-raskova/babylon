@@ -1828,8 +1828,13 @@ fn inspect_semantic_list(items: &[SExpr], extension: &str, output: &mut Vec<Stri
         "update-node" | "update-edge" | "update-hyperedge" => {
             inspect_qname(items.get(2), output);
         }
+        // The membership forms name the pair first, so their qname sits at index 3 (#653).
+        "membership-field-of" | "update-membership" => inspect_qname(items.get(3), output),
         "bindings" => inspect_binding_fields(items, output),
-        "node" if extension == "bscn" => {
+        // A scenario's `(node …)` carries `(qname value)` pairs from index 3, and so does its
+        // annotated `(member <NodeType> <ref> (<qname> <value>)*)` item (#653): one membership's
+        // values, read like a node's.
+        "node" | "member" if extension == "bscn" => {
             for attribute_index in 3..65_536 {
                 let Some(attribute) = items.get(attribute_index) else {
                     break;
@@ -1959,6 +1964,37 @@ mod tests {
         assert!(preflight_toml_value(path, &toml_value_fixture(true)).is_err());
         assert!(check_toml_stack_capacity(path, 0, 65_536).is_ok());
         assert!(check_toml_stack_capacity(path, 0, 65_537).is_err());
+    }
+
+    #[test]
+    fn an_sfs_qname_in_a_membership_form_is_refused() {
+        let path = Path::new("source.bsl");
+        let tokens = |source: &str, extension: &str| {
+            let forms = babylon_bsl::reader::read_all(source.as_bytes()).expect("fixture parses");
+            semantic_sexpr_tokens(path, &forms, extension).expect("fixture walks")
+        };
+        let reserved = vec!["sfs/aggregate".to_owned()];
+        assert_eq!(
+            tokens("(membership-field-of h m sfs/aggregate)", "bsl"),
+            reserved
+        );
+        assert_eq!(
+            tokens("(update-membership h m sfs/aggregate (set 1))", "bsl"),
+            reserved
+        );
+        assert_eq!(
+            tokens(
+                "(hyperedge n HyperedgeType/NATION (members \
+                 (member NodeType/SOCIAL_CLASS g (x/y 1) (sfs/aggregate 2))))",
+                "bscn"
+            ),
+            reserved
+        );
+        // A qname that is not reserved passes through the same forms.
+        assert_eq!(
+            tokens("(update-membership h m nation/share (set 1))", "bsl").len(),
+            0
+        );
     }
 
     #[test]

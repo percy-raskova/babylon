@@ -1,12 +1,13 @@
 //! Equipment service is a native quantity independent of the instrument's price.
-use super::assets;
-use crate::recorded_labor::book::{Book, Frame};
-use crate::recorded_labor::model::{LaborBasis, LaborNode, ReceiptRef, RecordedLaborError};
-use crate::recorded_labor::LaborReceiptFamily;
+use crate::recorded_labor::{
+    LaborBasis, LaborNode, LaborReceiptFamily, ReceiptRef, RecordedLaborError,
+};
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
     EquipmentCohortId, EquipmentWearReceipt, ProcessId, ProductiveEquipment, SiteId,
 };
+use babylon_recorded_labor::phases as assets;
+use babylon_recorded_labor::{Book, Frame};
 
 #[test]
 fn zero_price_wear_carries_floor_shares_and_the_final_residual_to_output() {

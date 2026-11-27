@@ -135,6 +135,7 @@ fn base_state() -> (MaterialCatalog, MaterialCircuitState) {
         };
         (
             MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+                market_clearing: None,
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 merchants: vec![],
                 handling_coefficients: vec![],
@@ -416,6 +417,7 @@ fn production_debits_all_inputs_before_crediting_any_output() {
         };
         (
             MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+                market_clearing: None,
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 merchants: vec![],
                 handling_coefficients: vec![],
@@ -586,6 +588,7 @@ fn numeric_boundary_catalog(
     process_id: ProcessId,
 ) -> MaterialCatalog {
     MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
@@ -674,6 +677,7 @@ fn zero_production_does_not_create_an_empty_inventory_row() {
         };
         (
             MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+                market_clearing: None,
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 merchants: vec![],
                 handling_coefficients: vec![],

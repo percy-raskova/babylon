@@ -4,6 +4,7 @@ mod authority;
 mod batch;
 mod budget;
 mod codec;
+mod county_review;
 mod intent;
 mod ordered_action;
 mod organizer;
@@ -24,6 +25,7 @@ pub use budget::{
     PRACTICE_BUDGET_TOPOLOGY_SOURCE_SHA256,
 };
 pub use codec::{budget_delta_digest, decode_budget_delta, encode_budget_delta};
+pub use county_review::*;
 pub use intent::*;
 pub use ordered_action::*;
 pub use organizer::*;

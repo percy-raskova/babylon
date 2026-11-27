@@ -65,15 +65,14 @@
 //!   module) for the conversion contract and its determinism argument.
 //! - **Hyperedges: minting only, no attributes yet** (2026-08-18, hyperedge-lane
 //!   Task 1, `docs/superpowers/plans/2026-08-18-community-port.md`). A
-//!   `(hyperedge <local-name> <HyperedgeType/MEMBER> (members <local-name>+))`
+//!   `(hyperedge <local-name> <HyperedgeType/MEMBER> (members <member-item>+))`
 //!   form mints one hyperedge through [`GraphSubstrate::add_hyperedge`],
 //!   resolving each member through the same local-name table `node`/`edge`
 //!   share — see [`LoadedScenario::hyperedge_types`]/
 //!   [`LoadedScenario::max_members_seen`] for the population maps it feeds.
-//!   Two gaps remain, each a later task's: initial hyperedge fields
-//!   (`hyperedge-attr`, Task 6) and per-membership payload (Amendment AG,
-//!   issue #653's own ceremony) — both still refuse loudly rather than
-//!   silently dropping a write. **The doctrine sentence this paragraph
+//!   A member item may be annotated, `(member <NodeType/X> <name> (<qname> <value>)*)`,
+//!   which seeds the membership's declared fields (Amendment AG clause i; the flat module
+//!   `scenario_membership`). Initial hyperedge fields are `hyperedge-attr`. **The doctrine sentence this paragraph
 //!   replaces survives**: an unused form is an untested form — it is why
 //!   `metric-of` still does not land either.
 //! - **No defaults.** A node with no attributes gets no attributes. An
@@ -109,7 +108,7 @@ use babylon_kernel::scalars::Ratio;
 use babylon_practice_contract::{
     PracticeContractError, PracticeTargetDomain, PracticeTopologyLoadCounter,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
@@ -216,7 +215,7 @@ impl From<VocabularyError> for ScenarioError {
     }
 }
 
-fn err(message: impl Into<String>) -> ScenarioError {
+pub(crate) fn err(message: impl Into<String>) -> ScenarioError {
     // A bare structural/prose message, no typed error behind it — nothing
     // to derive `position`/`identity` from. Callers with local typed
     // context (e.g. `load_defconst`'s duplicate check) attach identity
@@ -278,7 +277,7 @@ fn err(message: impl Into<String>) -> ScenarioError {
 /// [`VocabularyError::WrongEnumKind`] (`E-TYPE-011`) for a real type at
 /// the wrong position; [`VocabularyError::UnknownEnumType`] (`E-LOAD-030`)
 /// for a type name that is not registered anywhere at all.
-fn demand_enum_kind(
+pub(crate) fn demand_enum_kind(
     enum_type: &str,
     member: &str,
     demanded: EnumKind,
@@ -308,7 +307,7 @@ fn demand_enum_kind(
 /// `VocabularyError` names the type/member but not WHICH node or edge
 /// form wrote it; this prefixes that, at the two scenario-hydration
 /// producers (`load_node`/`load_edge`).
-fn vocab_err(form: impl std::fmt::Display, error: &VocabularyError) -> ScenarioError {
+pub(crate) fn vocab_err(form: impl std::fmt::Display, error: &VocabularyError) -> ScenarioError {
     ScenarioError {
         code: Some(error.spec_code()),
         identity: Some(crate::error_identity::vocabulary_identity(error)),
@@ -320,7 +319,7 @@ fn vocab_err(form: impl std::fmt::Display, error: &VocabularyError) -> ScenarioE
 /// A hydration failure the reference gives a code (§3.9). Takes a bare
 /// code + message, not a typed error — nothing structured behind either
 /// argument to populate `identity` from (same footing as `err()`).
-fn coded_err(code: &'static str, message: impl Into<String>) -> ScenarioError {
+pub(crate) fn coded_err(code: &'static str, message: impl Into<String>) -> ScenarioError {
     ScenarioError {
         message: message.into(),
         code: Some(code),
@@ -385,6 +384,13 @@ pub struct LoadedScenario {
     /// Deriving it from usage instead would mean guessing a kind, and
     /// intensivity is exactly what §3.4 refuses to guess.
     pub fields: HashMap<String, FieldDecl>,
+    /// Which of `fields` are membership fields (`deffield ... :member
+    /// NodeType/X`, Amendment AG clause i): qname -> the member node type's
+    /// member name. The qname's type and kind live in `fields`; this map
+    /// only marks the qnames that are read and written through
+    /// `membership-field-of` / `update-membership` rather than
+    /// `field-of` / `update-hyperedge`.
+    pub membership_fields: BTreeMap<String, String>,
     /// The DEFINES ENVIRONMENT a `:const` binding reads (§2.5, §4.2),
     /// keyed by qualified name.
     ///
@@ -479,6 +485,9 @@ struct PreludeRegistries {
     /// type+intensivity-kind pair per qname, read by `load_node`/
     /// `load_edge`/`load_edge_attr`'s field-init paths.
     fields: HashMap<String, FieldDecl>,
+    /// Which of `fields` are membership fields (`:member`): qname ->
+    /// member `NodeType` member name.
+    membership_fields: BTreeMap<String, String>,
     /// The DEFINES ENVIRONMENT a `:const` binding reads (§2.5, §4.2).
     consts: HashMap<String, Value>,
     /// Exact qnames of `consts` declared with a Probability literal. This
@@ -628,7 +637,7 @@ fn final_practice_fields(
                 load_defenum(form, &mut enums)?;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "deffield" => {
-                load_deffield(parts, &mut fields, &enums)?;
+                load_deffield(parts, &mut fields, &mut BTreeMap::new(), &enums, None)?;
             }
             _ => {}
         }
@@ -1047,7 +1056,13 @@ fn load_prelude_forms(
                 )?);
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "deffield" => {
-                load_deffield(parts, &mut registries.fields, &registries.enums)?;
+                load_deffield(
+                    parts,
+                    &mut registries.fields,
+                    &mut registries.membership_fields,
+                    &registries.enums,
+                    registries.vocabulary_so_far.as_ref(),
+                )?;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defconst" => {
                 load_defconst(
@@ -1178,6 +1193,7 @@ fn load_scenario_forms(
     // docs for why each exists.
     let PreludeRegistries {
         mut fields,
+        mut membership_fields,
         mut consts,
         mut probability_consts,
         mass_declarations: prelude_mass_declarations,
@@ -1245,7 +1261,13 @@ fn load_scenario_forms(
                 vocabulary_so_far = Some(ClosedVocabulary::new(vocabulary_members.clone())?);
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "deffield" => {
-                load_deffield(parts, &mut fields, &enums)?;
+                load_deffield(
+                    parts,
+                    &mut fields,
+                    &mut membership_fields,
+                    &enums,
+                    vocabulary_so_far.as_ref(),
+                )?;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defconst" => {
                 load_defconst(parts, &mut consts, &mut probability_consts)?;
@@ -1301,6 +1323,7 @@ fn load_scenario_forms(
                     graph,
                     &named,
                     &mut seeded_hyperedge_names,
+                    (&fields, &membership_fields),
                     &enums,
                     vocabulary_so_far.as_ref(),
                 )?;
@@ -1316,7 +1339,7 @@ fn load_scenario_forms(
                     graph,
                     &seeded_hyperedge_names,
                     &mut seeded_hyperedge_attrs,
-                    &fields,
+                    (&fields, &membership_fields),
                     &enums,
                 )?;
             }
@@ -1352,6 +1375,7 @@ fn load_scenario_forms(
         hyperedge_types,
         max_members_seen,
         fields,
+        membership_fields,
         consts,
         probability_consts,
         mass_declarations: scenario_mass_declarations,
@@ -1851,13 +1875,31 @@ fn load_defvocabulary(
 fn load_deffield(
     parts: &[SExpr],
     fields: &mut HashMap<String, FieldDecl>,
+    membership_fields: &mut BTreeMap<String, String>,
     enums: &EnumRegistry,
+    vocabulary: Option<&ClosedVocabulary>,
 ) -> Result<(), ScenarioError> {
-    let [_, SExpr::Atom(Atom::QName(qname)), SExpr::Atom(Atom::Symbol(ty)), fourth] = parts else {
+    let [_, SExpr::Atom(Atom::QName(qname)), SExpr::Atom(Atom::Symbol(ty)), fourth, option @ ..] =
+        parts
+    else {
         return Err(err(
-            "expected (deffield <field-qname> <type> <intensive|extensive>) or \
-             (deffield <field-qname> enum <EnumTypeName>)",
+            "expected (deffield <field-qname> <type> <intensive|extensive> [:member NodeType/X]) \
+             or (deffield <field-qname> enum <EnumTypeName> [:member NodeType/X])",
         ));
+    };
+    let member = match option {
+        [] => None,
+        [SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(Atom::EnumRef { enum_type, member })]
+            if kw == "member" =>
+        {
+            Some((enum_type.as_str(), member.as_str()))
+        }
+        _ => {
+            return Err(err(format!(
+                "deffield `{qname}`: the only option after the kind is \
+                 :member NodeType/<MEMBER>, found {option:?}"
+            )));
+        }
     };
     let decl = if ty == "enum" {
         let SExpr::Atom(Atom::BareUpperIdent(type_name)) = fourth else {
@@ -1915,12 +1957,58 @@ fn load_deffield(
         };
         FieldDecl { ty, kind }
     };
+    let member_node_type = match member {
+        Some((enum_type, member_name)) => Some(check_membership_declaration(
+            qname,
+            &decl,
+            (enum_type, member_name),
+            enums,
+            vocabulary,
+        )?),
+        None => None,
+    };
     if fields.insert(qname.clone(), decl).is_some() {
         return Err(err(format!(
             "duplicate deffield `{qname}` — a field has one declared type and kind"
         )));
     }
+    if let Some(member_node_type) = member_node_type {
+        membership_fields.insert(qname.clone(), member_node_type);
+    }
     Ok(())
+}
+
+/// The `:member` half of a scenario `deffield`, checked as §2.9 orders it:
+/// the owner is a registered `HyperedgeType` (E-LOAD-023 / E-LOAD-048), the
+/// operand a registered `NodeType` member (E-TYPE-011), and the type is not
+/// `currency`. The owner and member-registration checks need a declared
+/// vocabulary; the operand's KIND is positional and runs without one, as
+/// `load_node`'s own enum-ref position does. Returns the member node type's
+/// member name.
+fn check_membership_declaration(
+    qname: &str,
+    decl: &FieldDecl,
+    (enum_type, member_name): (&str, &str),
+    enums: &EnumRegistry,
+    vocabulary: Option<&ClosedVocabulary>,
+) -> Result<String, ScenarioError> {
+    let form = format!("deffield `{qname}`");
+    if let Some(vocabulary) = vocabulary {
+        vocabulary
+            .hyperedge_owner_of_field(qname)
+            .map_err(|e| vocab_err(&form, &e))?;
+    }
+    demand_enum_kind(enum_type, member_name, EnumKind::NodeType, enums)
+        .map_err(|e| vocab_err(&form, &e))?;
+    if let Some(vocabulary) = vocabulary {
+        vocabulary
+            .check_enum_ref(enum_type, member_name)
+            .map_err(|e| vocab_err(&form, &e))?;
+    }
+    if matches!(decl.ty, BslType::Currency) {
+        return Err(err(currency_edge_unsupported_message("membership", qname)));
+    }
+    Ok(member_name.to_owned())
 }
 
 /// `(node <local-name> <enum-ref> (<qname> <int>)*)`
@@ -2059,7 +2147,7 @@ fn load_node(
 /// rendering and no refusal calls an edge a "node" (Train B item 3, #591;
 /// the same form-parameter convention `vocab_err` and `evaluator.rs`'s
 /// `check_*_referent_type` already model).
-fn attribute_value(
+pub(crate) fn attribute_value(
     atom: &Atom,
     local: &str,
     field: &str,
@@ -2375,7 +2463,7 @@ fn currency_refusal_message(local: &str, field: &str) -> String {
 /// `update_edge_currency`. Distinct wording from
 /// [`currency_refusal_message`] on purpose: this is not a kind mismatch,
 /// it is a real, named scope gap.
-fn currency_edge_unsupported_message(local: &str, field: &str) -> String {
+pub(crate) fn currency_edge_unsupported_message(local: &str, field: &str) -> String {
     format!(
         "{local} field `{field}`: currency-declared fields have typed storage \
          for NODE attributes only (T3 #491, OQ-J) — there is no edge-scoped \
@@ -2644,7 +2732,7 @@ fn load_edge_attr(
     Ok(())
 }
 
-/// `(hyperedge <local-name> <HyperedgeType/MEMBER> (members <local-name>+))` —
+/// `(hyperedge <local-name> <HyperedgeType/MEMBER> (members <member-item>+))` —
 /// hyperedge-lane Task 1 (`docs/superpowers/plans/2026-08-18-community-port.md`).
 /// Mirrors `load_node`: the enum-ref position demands `HyperedgeType`
 /// unconditionally (`demand_enum_kind`, same as `node`/`edge`), the declared
@@ -2700,6 +2788,7 @@ fn load_hyperedge(
     graph: &mut dyn GraphSubstrate,
     named: &HashMap<String, NodeId>,
     seeded_hyperedge_names: &mut HashMap<String, HyperedgeId>,
+    declared: (&HashMap<String, FieldDecl>, &BTreeMap<String, String>),
     enums: &EnumRegistry,
     vocabulary: Option<&ClosedVocabulary>,
 ) -> Result<(String, u64), ScenarioError> {
@@ -2708,7 +2797,7 @@ fn load_hyperedge(
     else {
         return Err(err(
             "expected (hyperedge <local-name> <HyperedgeType/MEMBER> \
-             (members <local-name>+))",
+             (members <member-item>+))",
         ));
     };
     // load_node:1249-1254's identical check, one element kind over — a
@@ -2735,17 +2824,17 @@ fn load_hyperedge(
     }
     let SExpr::List(member_parts) = members_form else {
         return Err(err(format!(
-            "hyperedge `{local}`: expected a (members <local-name>+) form"
+            "hyperedge `{local}`: expected a (members <member-item>+) form"
         )));
     };
     let [SExpr::Atom(Atom::Symbol(head)), member_names @ ..] = member_parts.as_slice() else {
         return Err(err(format!(
-            "hyperedge `{local}`: expected a (members <local-name>+) form"
+            "hyperedge `{local}`: expected a (members <member-item>+) form"
         )));
     };
     if head != "members" {
         return Err(err(format!(
-            "hyperedge `{local}`: expected a (members <local-name>+) form, found ({head} ...)"
+            "hyperedge `{local}`: expected a (members <member-item>+) form, found ({head} ...)"
         )));
     }
     if member_names.is_empty() {
@@ -2754,22 +2843,17 @@ fn load_hyperedge(
              GraphSubstrate::add_hyperedge's own refusal (babylon-graph/src/memory.rs:357-361)"
         )));
     }
-    let mut members = Vec::with_capacity(member_names.len());
-    for name_expr in member_names {
-        let SExpr::Atom(Atom::Symbol(name)) = name_expr else {
-            return Err(err(format!(
-                "hyperedge `{local}`: a member is a bare local node name"
-            )));
-        };
-        let id = named.get(name).copied().ok_or_else(|| {
-            err(format!(
-                "hyperedge `{local}` names unknown node `{name}` — a node must be \
-                 declared before a hyperedge referring to it, so a scenario reads \
-                 top to bottom"
-            ))
-        })?;
-        members.push(id);
-    }
+    let cx = crate::scenario_membership::MemberContext {
+        hyperedge: local,
+        hyperedge_type: member,
+        named,
+        fields: declared.0,
+        membership_fields: declared.1,
+        enums,
+        vocabulary,
+    };
+    let seeded = crate::scenario_membership::parse_member_items(member_names, &*graph, &cx)?;
+    let mut members: Vec<NodeId> = seeded.iter().map(|(id, _)| *id).collect();
     #[allow(
         clippy::cast_possible_truncation,
         reason = "the bounded fixture index is range-checked before narrowing"
@@ -2779,6 +2863,7 @@ fn load_hyperedge(
     // this function's doc comment.
     members.sort_unstable();
     let id = graph.add_hyperedge(member, &members)?;
+    crate::scenario_membership::write_member_values(graph, id, &seeded)?;
     seeded_hyperedge_names.insert(local.clone(), id);
     Ok((member.clone(), member_count))
 }
@@ -2814,7 +2899,7 @@ fn load_hyperedge_attr(
     graph: &mut dyn GraphSubstrate,
     seeded: &HashMap<String, HyperedgeId>,
     seeded_attrs: &mut HashSet<(HyperedgeId, String)>,
-    declared: &HashMap<String, FieldDecl>,
+    (declared, membership_fields): (&HashMap<String, FieldDecl>, &BTreeMap<String, String>),
     enums: &EnumRegistry,
 ) -> Result<(), ScenarioError> {
     let [_, SExpr::Atom(Atom::Symbol(local)), SExpr::Atom(Atom::QName(field)), SExpr::Atom(value)] =
@@ -2846,6 +2931,7 @@ fn load_hyperedge_attr(
              `check_hyperedge_referent_type` checks it at evaluation)"
         )));
     }
+    crate::scenario_membership::refuse_membership_field(local, field, membership_fields)?;
     // The registry contract, ENFORCED — load_node's undeclared-field refusal
     // verbatim, one element kind over.
     let Some(decl) = declared.get(field) else {
@@ -2894,7 +2980,7 @@ mod tests {
     use babylon_graph::substrate::{Direction, GraphSubstrate, HyperedgeId, NodeId};
     use babylon_kernel::currency::Currency;
     use babylon_kernel::replay::ReplaySessionId;
-    use std::collections::{HashMap, HashSet};
+    use std::collections::{BTreeMap, HashMap, HashSet};
 
     const TWO_CLASSES: &str = r"
 (scenario ft/two-classes
@@ -3348,6 +3434,7 @@ mod tests {
                 super::load_scenario(&source, &mut graph).expect("the authored scenario compiles");
 
             let types = TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields: HashMap::from([
                     (
                         "social-class/seeded".to_owned(),
@@ -3460,23 +3547,10 @@ mod tests {
             let loaded_scenario =
                 super::load_scenario(&source, &mut graph).expect("the authored scenario compiles");
 
+            // Exactly the two currency/extensive fields the scenario above declared.
             let types = TypeEnv {
-                fields: HashMap::from([
-                    (
-                        "social-class/seeded".to_owned(),
-                        FieldDecl {
-                            ty: BslType::Currency,
-                            kind: FieldKind::Extensive,
-                        },
-                    ),
-                    (
-                        "social-class/written".to_owned(),
-                        FieldDecl {
-                            ty: BslType::Currency,
-                            kind: FieldKind::Extensive,
-                        },
-                    ),
-                ]),
+                membership_fields: BTreeMap::new(),
+                fields: loaded_scenario.fields.clone(),
                 exemptions: &[],
             };
             let vocabulary = BindingVocabulary {

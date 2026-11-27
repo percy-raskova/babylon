@@ -1,0 +1,191 @@
+ADR324_the_country_before_more_of_the_small_world:
+  title: The country before more of the small world; a country bench, then the country's opening; the pay fight after
+  date: '2026-11-24'
+  status: accepted
+  issue: PER-371
+  evidence_class: Designed
+  authority:
+    - >-
+        Director, 2026-11-24, typed while stored hours were being built: "so
+        your strategy for integrating babylons economy to a nationwide level
+        is demonstrate a proof of concept in an isolated mock economy then
+        extrapolate?"
+    - >-
+        Director, 2026-11-24, typed next: "how cna an entire country only have
+        187 places when we have over 3000 counties?"
+    - >-
+        Director, 2026-11-24, in the question dialog, asked what comes after
+        stored hours' last two tasks, with the figures of the sizing in the
+        question: "Country, then its opening (Recommended)".
+  context: |
+    Since 20 November every new rule of the economy has been built in the
+    engine and counted on the small world: two places, eight workplaces,
+    eighty people, figures balanced by hand, no trade between its two places
+    and nothing abroad. It runs the real engine and the real rules' code. What
+    is made up is the world. So a figure counted on it is a fact about that
+    world. The bribe cannot arise in it, because nothing comes from abroad.
+
+    The country was measured once, on 20 November, with the economy as
+    shipped (`reports/economy-repair-2026-11-20/`). It collapses: household
+    services are unmet from the first period, 80% of food by period 5, 99% by
+    period 34, and 111 million people are laid off in period 2. Twelve changes
+    of its numbers did not hold it. The cure the Director approved that day is
+    the rebuilt opening (ADR313), whose national part (stages 1 and 2) is not
+    built. The country has never run any rule built since.
+
+    The country as it runs is itself a reduction (ADR296, 10 November). The
+    data has 3,144 counties. The economy pools them into 187 places with
+    households and 7,463 workplaces: Wayne and Cook are kept whole, counties
+    with no plain road access are their own places, and every other county is
+    pooled with the counties of its state in the same federal freight zone at
+    a real hub county. The design of 20 November carried this as one sentence
+    ("The map's places stay"), which did not say it.
+
+    Three times the question came up of what is built before the bridge: the
+    six rules (ADR320), stored hours (ADR322), the pay fight (ADR323, F10).
+    Each time the lead proposed the small-world work first and the Director
+    agreed. Each made sense alone. Together they put the country's first run
+    with any new rule more than two dozen tasks away.
+
+    A sizing read from the code on 24 November found what stops the country
+    today. No campaign can ask for a rule: every catalog is compiled with no
+    market policy. The game's own turn refuses market, want, tier and program
+    rows, drops the rules' receipts, keeps no standing of workplaces, does no
+    staffing by place and would refuse the restart's money. Two ways through:
+    the game's own turn, 12 tasks (15 with tiers and benefits), which is a
+    larger bridge than the plan of 13 tasks that does not cover the six
+    rules; or around it, 5 tasks (7), a test runner that steps the national
+    catalog on the engine's own period as the small worlds' runner does.
+  decision: |
+    C1. THE COUNTRY BEFORE MORE OF THE SMALL WORLD. In the Director's pick:
+    "First a country bench, 5 to 7 tasks: a test runner steps the real
+    national catalog on the engine's own period, with the price rule, the six
+    rules and benefits on, beside a run with none. Trade routes, imports,
+    foreign regions and companies all run. It shows whether the rules run at
+    the country's size, how fast, and what breaks. Then the country's rebuilt
+    opening (17 tasks: the twelve trades' jobs and pay by place from the data,
+    then a national scenario on them), counted on that bench as it is built.
+    The pay fight's plan waits as written until the country holds. Cost: the
+    scene's first decision comes much later."
+
+    C2. THE ORDER OF THE BUILD. Stored hours' last tasks. Then the country
+    bench. Then the country's opening: stage 1, the reference tables, and
+    stage 2, the twelve trades (ADR313), each counted on the bench as it is
+    built. Then the pay fight's first part, counted on the small world and on
+    the country. Then the game's own turn carries the rules, so that a
+    campaign runs, saves and shows them.
+
+    THE BENCH. Its plan is
+    `docs/superpowers/plans/2026-11-24-the-country-bench.md`. It is equipment
+    for counting, as the small world's bench is. It is no part of the game a
+    player meets, and it changes no campaign.
+  amends:
+    - >-
+        ADR323, F10 ("Build it after stored hours and before the bridge"):
+        the pay fight's first part is built after the country bench and the
+        country's opening. Its design, its other rulings and its plan stand
+        as written. Its counted run (the plan's Task 9) is made on the
+        country bench as well as on the small world.
+    - >-
+        The order of the build recorded on 23 and 24 November (ADR320, ADR322,
+        ADR323): after stored hours it is now the order of C2.
+    - >-
+        ADR313, the build order of the rebuilt opening: stages 1 and 2 follow
+        the bench. Its "quiet run of 34 periods across the country" is made on
+        the bench first, and in the game's own turn when that carries the
+        rules.
+    - >-
+        The bridge plan (stage 4b, 13 tasks): it does not cover the six rules.
+        It is written again when its turn comes; the sizing counts 12 to 15
+        tasks.
+  lead_readings_for_the_director_to_check:
+    - >-
+        The bench goes around the game's own turn. It turns the companies'
+        choice of what to invest in off, because that choice is drawn inside
+        the turn, and it has no City PD attendance and no County Review. So
+        every run with rules is judged against the bench's own run with none,
+        not against the record of 20 November.
+    - >-
+        Benefits are in the first runs. Comforts and luxuries are out: their
+        lists would be invented figures until the baskets of the rebuilt
+        opening exist.
+    - >-
+        The first runs are on the shipped opening, which collapses from causes
+        the rules were not built to cure. They tell whether the rules run at
+        the country's size, how fast, what breaks, and what they do to that
+        collapse. They do not tell whether a balanced country holds. That is
+        the rebuilt opening's work, counted on the same bench.
+    - >-
+        The country's sizes are counted first. People who look for work need
+        a row for each household group at each workplace of its place, and
+        the engine's limit is 131,072 such rows. If they do not fit, the build
+        stops and the choice comes to the Director: raising the limit and
+        narrowing where people may look are not the lead's to decide.
+    - >-
+        "The country" in a record means the 187 pooled places of ADR296. How
+        fine the country runs, and which counties are kept whole, is a later
+        choice of the Director's and needs the bench's figures of speed.
+    - >-
+        From now a figure says which world it was counted on, the small world
+        or the country, and a rule counts as proven when it is counted on
+        both.
+  consequences:
+    - >-
+        The scene gets its first decision later: the pay fight's fifteen tasks
+        follow about two dozen tasks of the country.
+    - >-
+        Every later rule, the pay fight among them, can be counted on the
+        country as well as on the small world, before the game's own turn
+        carries it.
+    - >-
+        Places where the rules' work grows with the square of the size are
+        found and mended now, at the country's size, with no admitted world
+        changing.
+    - >-
+        Stored hours, the six rules and the pay fight's design and plan stay
+        as built and as written.
+  alternatives_rejected:
+    - >-
+        "Country bench, then pay fight": the bench for facts on size, speed
+        and limits, then the pay fight as planned, the country's opening
+        after. Not picked: the pay fight would be counted on a country that
+        still collapses.
+    - >-
+        "Through the game's turn": 12 to 15 tasks, the country running the
+        rules inside the real game's own turn. Not picked: first national
+        figures would come later; all of it is needed in the end either way.
+    - >-
+        "Keep this morning's order": the pay fight next, then the bridge, then
+        the country. Not picked: what the pay fight shows would stay a fact
+        about the small world only.
+  open_questions:
+    - >-
+        How fine the country runs: 187 pooled places today, Wayne and Cook
+        whole. The Director's, with the bench's figures of speed.
+    - >-
+        Whether the rows that people who look for work need fit the engine's
+        limit at the country's size. Counted in the bench's first task.
+    - >-
+        Whether the game's own turn accepts every period of a country that
+        runs the rules. Untested until the turn's own tasks.
+    - >-
+        Every job of the shipped opening pays one wage, $24. People who look
+        for work go to the highest wage first, so that order means nothing on
+        the country until the twelve trades bring pay by trade and place.
+  verification: |
+    The bench's plan: the recorder's reader gives the same record for the
+    first three periods of the game's own turn before and after it learns to
+    read the bench; money and persons are checked every period of every run;
+    each rule's receipts are counted, so a rule that is on and does nothing is
+    seen; one period of each set of rules is timed before any long run; every
+    set is recorded beside the bench's own run with no rules.
+  related:
+    - ADR296_national_game_grain
+    - ADR312_the_price_of_a_short_market
+    - ADR313_the_national_economy_opens_in_balance
+    - ADR314_how_the_economy_adjusts
+    - ADR319_a_shock_is_not_a_failure
+    - ADR320_screen_first_the_small_world_in_the_client
+    - ADR321_the_six_rules_as_measured
+    - ADR322_whose_hours
+    - ADR323_the_pay_fight

@@ -53,6 +53,14 @@ pub enum CensusError {
     NoWage(String),
     /// A foreign region whose every site making a good has nobody at work (the region is named).
     RegionWithoutWork(String),
+    /// A restocking row of the opening buys abroad from a region other than the one the census reads by the
+    /// rotation (the compiler's path test sent the buyer elsewhere): the buyer's site, the good, the two regions.
+    RotationDiffers {
+        buyer: String,
+        good: String,
+        census: String,
+        opening: String,
+    },
     /// A figure past what an integer of the file holds.
     Overflow(&'static str),
     /// A trade with no figure where the policy must give one.
@@ -70,6 +78,15 @@ impl Display for CensusError {
             ),
             Self::NoWage(seller) => write!(f, "the seller {seller} pays no wage"),
             Self::RegionWithoutWork(region) => write!(f, "{region} has nobody at work"),
+            Self::RotationDiffers {
+                buyer,
+                good,
+                census,
+                opening,
+            } => write!(
+                f,
+                "{buyer} buys {good} abroad from {opening}, the census's rotation says {census}"
+            ),
             Self::Overflow(what) => write!(f, "{what} overflows"),
             Self::Policy(what) => write!(f, "the policy has no {what}"),
         }
@@ -204,7 +221,8 @@ pub fn gunzip_text(bytes: &[u8]) -> std::result::Result<Vec<u8>, String> {
 #[must_use]
 pub fn census_scenario(text: &str) -> String {
     const SERVICES: &str = r#"country_services = ["business_services", "leisure", "utility"]"#;
-    let has_handling = section_has(text, "[commodity.consumer_goods]", "handling_hours");
+    let has_hours = section_has(text, "[commodity.consumer_goods]", "handling_hours");
+    let has_units = section_has(text, "[commodity.consumer_goods]", "handling_units");
     let has_markets = text.lines().any(|line| line.trim() == "[markets]");
     let mut out = String::with_capacity(text.len() + 512);
     let mut section = String::new();
@@ -216,7 +234,7 @@ pub fn census_scenario(text: &str) -> String {
             in_array = !line.contains(']');
             continue;
         }
-        if trimmed.starts_with('[') {
+        if is_header(trimmed) {
             in_wants = trimmed == "[[household_wants]]";
             trimmed.clone_into(&mut section);
             if in_wants {
@@ -228,8 +246,13 @@ pub fn census_scenario(text: &str) -> String {
                 out.push_str(SERVICES);
                 out.push('\n');
             }
-            if section == "[commodity.consumer_goods]" && !has_handling {
-                out.push_str("handling_hours = 1\nhandling_units = 1\n");
+            if section == "[commodity.consumer_goods]" {
+                if !has_hours {
+                    out.push_str("handling_hours = 1\n");
+                }
+                if !has_units {
+                    out.push_str("handling_units = 1\n");
+                }
             }
             continue;
         }
@@ -257,6 +280,14 @@ pub fn census_scenario(text: &str) -> String {
     out
 }
 
+/// A table header (`[table]` or `[[array]]`), not a row of nested arrays such as `[1, 2]` or `["a"]`.
+fn is_header(line: &str) -> bool {
+    line.strip_prefix("[[")
+        .or_else(|| line.strip_prefix('['))
+        .and_then(|rest| rest.chars().next())
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+}
+
 fn is_key(line: &str, key: &str) -> bool {
     line.strip_prefix(key)
         .is_some_and(|rest| rest.trim_start().starts_with('='))
@@ -267,7 +298,7 @@ fn section_has(text: &str, header: &str, key: &str) -> bool {
     let mut inside = false;
     for line in text.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with('[') {
+        if is_header(trimmed) {
             inside = trimmed == header;
         } else if inside && is_key(trimmed, key) {
             return true;
@@ -936,6 +967,48 @@ fn rotation(frame: &Frame<'_>, doc: &mut Doc) -> Result<()> {
     Ok(())
 }
 
+/// The census reads a buyer's region abroad by the first rotated region; the compiler skips a region with no
+/// path for the cargo. Where the opening's restocking rows buy a good abroad for a domestic buyer, the
+/// supplier's location must be the region the census names: the rows are a check and give no figure.
+///
+/// # Errors
+/// `RotationDiffers` for a row that buys elsewhere; `Absent` when no row buys abroad (the check would be empty).
+fn rotation_agrees(frame: &Frame<'_>) -> Result<()> {
+    let mut checked = 0_usize;
+    for row in &frame.opening.policies.replenishment {
+        let (Some(buyer), Some(supplier)) = (
+            frame.sites.get(&row.buyer_site_id),
+            frame.sites.get(&row.supplier_site_id),
+        ) else {
+            continue;
+        };
+        if !buyer.domestic() || supplier.domestic() {
+            continue;
+        }
+        let Some(good) = frame
+            .goods
+            .iter()
+            .find(|good| (good.id, good.unit) == (row.good_id, row.unit_id))
+        else {
+            continue;
+        };
+        checked += 1;
+        let census = national_economy::crossing_region(&good.regions, row.buyer_site_id);
+        if census != Some(supplier.location) {
+            return Err(CensusError::RotationDiffers {
+                buyer: format!("{:?}", row.buyer_site_id),
+                good: good.key.clone(),
+                census: format!("{census:?}"),
+                opening: format!("{:?}", supplier.location),
+            });
+        }
+    }
+    if checked == 0 {
+        return Err(CensusError::Absent("restocking row abroad"));
+    }
+    Ok(())
+}
+
 /// The profile's pay in trade `function`: `floor(national_wage x bps / 10_000)`, or the designed hourly wage.
 fn region_wage(
     frame: &Frame<'_>,
@@ -1049,6 +1122,7 @@ pub fn opening_census(
     workforce(&frame, &mut doc)?;
     purchases(&frame, &mut doc)?;
     rotation(&frame, &mut doc)?;
+    rotation_agrees(&frame)?;
     abroad(&frame, &mut doc)?;
     sources(catalog, policy, &mut doc)?;
     Ok(doc.0)

@@ -123,6 +123,21 @@ fn the_census_scenario_replaces_what_the_text_has() {
 }
 
 #[test]
+fn the_census_scenario_adds_only_the_handling_line_the_text_lacks() {
+    let own = FIXTURE.replacen(
+        "[commodity.consumer_goods]\n",
+        "[commodity.consumer_goods]\nhandling_units = 3\n",
+        1,
+    );
+    let text = opening_census::census_scenario(&own);
+    let policy = NationalGamePolicy::parse(&text).expect("the census scenario admits");
+    let handling = policy.commodities["consumer_goods"]
+        .handling
+        .expect("handling");
+    assert_eq!((handling.hours, handling.units), (1, 3));
+}
+
+#[test]
 fn the_committed_census_is_the_opening_s() {
     let (catalog, policy, _) = captured();
     let fresh = opening_census::census_bytes(&census_of(&catalog, &policy));

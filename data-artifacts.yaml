@@ -1651,6 +1651,22 @@ artifacts:
       industry, jobs and split, in whole USD thousands, jobs or USD. Split
       industries share by national published jobs. No money or hour is
       allocated to a household, site or recipe, and no reader exists yet.
+  - name: national_opening_census_v13
+    format: json.gz
+    source_table: null
+    generator: rust/crates/babylon-persistence/tests/national_opening_census.rs
+    mode: register
+    rows: 316
+    sha256: 2fc8a6d0806f49e5e3143639435177f86fd0b461e2537cf730b53b3d803633fd
+    home: src/babylon/data/reference/economy/national_opening_census_v13.json.gz
+    material_relation: >-
+      Part of PER-371: the persons, jobs and wages of the twelve-trade opening,
+      read by the stage 5 builder. Gzipped JSON text, one row for each of the
+      316 parts of the 187 places: its people and workplaces by trade and
+      budget key, the seller each account is dealt, the foreign rows of every
+      domestic buyer and the crossing force. Written by the ignored test
+      record_national_opening_census; the test the_committed_census_is_the_opening_s
+      computes the census again and compares the decompressed text with it.
   - name: national_transport_reference_2024
     format: json.gz
     source_table: null

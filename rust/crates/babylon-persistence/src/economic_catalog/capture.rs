@@ -25,8 +25,9 @@ use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::national_household_refinement::NationalDetailPartition;
 use crate::spatial_reference_products::SpatialReferenceProducts;
 use babylon_kernel::content_digest;
+use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::TradeSet;
-use babylon_material_circuit::{CompanyConditionOrder, FinalDemandPrincipalId};
+use babylon_material_circuit::{CompanyConditionOrder, FinalDemandPrincipalId, SiteId};
 use babylon_tick::h3_runtime::MichiganDynamicHexFoundation;
 use std::collections::BTreeSet;
 use std::fmt::Formatter;
@@ -258,12 +259,22 @@ impl CapturedEconomicCatalog {
         }
     }
     /// Captured opening budget for an exact household principal, where authored.
-    pub(crate) fn national_household_budget(
+    #[must_use]
+    pub fn national_household_budget(
         &self,
         principal: FinalDemandPrincipalId,
     ) -> Option<HouseholdBudgetKey> {
         match &self.sources {
             CapturedSources::National(sources) => sources.household_keys.get(&principal).copied(),
+            CapturedSources::Michigan(_) => None,
+        }
+    }
+    /// The observed wage a domestic site pays, micros an hour, under policy schema 8; the wage of a site with
+    /// no employee is in no row of the opening, so the census reads it here.
+    #[must_use]
+    pub fn national_workplace_wage(&self, site: SiteId) -> Option<Currency> {
+        match &self.sources {
+            CapturedSources::National(sources) => sources.workplace_wages.get(&site).copied(),
             CapturedSources::Michigan(_) => None,
         }
     }

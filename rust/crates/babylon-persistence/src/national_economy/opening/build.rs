@@ -315,6 +315,7 @@ impl<'a> Builder<'a> {
             companies,
             opening: builder.opening,
             household_keys: builder.household_keys,
+            workplace_wages: builder.workplace_wages,
             aid: builder.aid,
             support_claimant: builder.support_claimant,
             detail,
@@ -537,6 +538,9 @@ pub struct NationalOpening {
     pub opening: EconomicOpening,
     /// Opening budget identity by exact admitted household principal.
     pub(crate) household_keys: BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
+    /// The wage each domestic site pays under `GameWages::Observed` (empty under `Single`): the census reads
+    /// the wage of a site with no employee, which no row of the opening holds.
+    pub(crate) workplace_wages: BTreeMap<SiteId, Currency>,
     pub aid: NationalAidCapture,
     pub support_claimant: Option<NationalSupportClaimant>,
     /// Authored foreground identities and conserved counted background cohorts.

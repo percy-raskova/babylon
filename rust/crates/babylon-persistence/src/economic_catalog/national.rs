@@ -20,8 +20,9 @@ use crate::national_transport::NationalTransportReference;
 use crate::world_reference::WorldReference;
 use babylon_bsl::scenario_seed::GraphSeed;
 use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::TradeSet;
-use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::{FinalDemandPrincipalId, SiteId};
 use std::collections::BTreeMap;
 use std::result::Result as StdResult;
 
@@ -34,6 +35,8 @@ pub(super) struct NationalSources {
     pub(super) aid: NationalAidCapture,
     pub(super) support_claimant: Option<NationalSupportClaimant>,
     pub(super) household_keys: BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
+    /// The observed wage of each domestic site (schema 8; empty before).
+    pub(super) workplace_wages: BTreeMap<SiteId, Currency>,
     pub(super) representation: NationalGenerationWitness,
     /// Authored foreground identities and counted background cohorts fixed at opening.
     pub(super) detail: NationalDetailPartition,
@@ -129,6 +132,7 @@ impl NationalSources {
                 aid: opening.aid,
                 support_claimant: opening.support_claimant,
                 household_keys: opening.household_keys,
+                workplace_wages: opening.workplace_wages,
                 companies: opening.companies,
                 finances: opening.finances,
                 representation: opening.representation,

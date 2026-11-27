@@ -49,6 +49,8 @@ def test_a_recipe_takes_the_smallest_batch_within_half_a_percent() -> None:
     assert recipe.inputs == {"i": 333}
     assert recipe.exact_cost_micros == F(2_420_000_000, 3000)
     assert recipe.rounded_cost_micros == 806_000
+    assert recipe.hours_error == 0  # 7 / (7/1000 x 1000) - 1
+    assert recipe.input_errors == {"i": F(-1, 2000)}  # 1/2 x (333 / (1000/3) - 1)
     assert abs(recipe.rounded_cost_micros / recipe.exact_cost_micros - 1) < F(1, 1000)
 
 

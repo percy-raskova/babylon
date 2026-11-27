@@ -806,6 +806,10 @@ def _trades(o: Opening, census: Census, w: Written, cut: Recut, economy: Economy
                 if recipe.exact_cost_micros > 0
                 else _ZERO
             ),
+            "recipe_hours_error": fr(recipe.hours_error),
+            "recipe_input_errors": {
+                good: fr(err) for good, err in sorted(recipe.input_errors.items())
+            },
             "tax": fr(rate * income),
             "wage": fr(q.wage[trade]),
             "wear": fr(o.wear.get(trade, _ZERO)),

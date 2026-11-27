@@ -470,10 +470,7 @@ def test_a_residual_over_a_hundredth_is_refused() -> None:
 def test_decimals_are_half_up_and_exact() -> None:
     assert mk.decimal(F(1, 3)) == "0.333333333"
     assert mk.decimal(F(2, 3)) == "0.666666667"
-    assert (
-        mk.decimal(F(-1, 2000000000)) == "-0.000000001"
-        or mk.decimal(F(-1, 2000000000)) == "0.000000000"
-    )
+    assert mk.decimal(F(-1, 2000000000)) == "0.000000000"
     assert mk.decimal(F(-5, 4)) == "-1.250000000"
     assert mk.fr(F(7, 2)) == {"decimal": "3.500000000", "exact": "7/2"}
 
@@ -542,6 +539,12 @@ def test_the_committed_metadata_has_the_keys_task_15_reads() -> None:
             assert label in r.BUDGET_LABEL.values(), (part, label)
             assert set(goods) == {"consumer_goods", "food", "materials"}
             assert all(isinstance(v, int) for v in goods.values())
+    for trade, row in meta["trades"].items():
+        # decision 6: each recipe's three errors, the ones `batch` judges it by
+        assert set(row["recipe_hours_error"]) == {"decimal", "exact"}, trade
+        assert row["recipe_input_errors"], trade
+        for err in row["recipe_input_errors"].values():
+            assert set(err) == {"decimal", "exact"}, trade
     moved = meta["recut"]["moved"]
     assert set(moved) <= {"R1", "R2", "R3", "O4_inventories"}
     for products in moved.values():

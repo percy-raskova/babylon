@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from typing import Final, Literal
 
@@ -123,6 +123,10 @@ class Recipe:
     margin_bps: int | None  # None for public provision
     exact_cost_micros: Fraction  # a unit, at written prices
     rounded_cost_micros: Fraction  # a unit, at written prices
+    hours_error: Fraction = Fraction(0)  # `L / (h x n) - 1`, the batch's hours against exact
+    input_errors: Mapping[str, Fraction] = field(
+        default_factory=dict
+    )  # share x (input / exact - 1)
 
 
 @dataclass(frozen=True)
@@ -237,6 +241,11 @@ def batch(
             margin_bps=None,
             exact_cost_micros=exact,
             rounded_cost_micros=rounded,
+            hours_error=Fraction(hours) / (hours_per_unit * n) - 1,
+            input_errors={
+                good: shares[good] * (Fraction(inputs[good]) / (units * n) - 1)
+                for good, units in sorted(inputs_per_unit.items())
+            },
         )
     raise _fail("recipe_rounding", trade)
 

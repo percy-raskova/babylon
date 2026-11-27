@@ -925,12 +925,12 @@
   "inputs": {
     "accounts_sha256": "398d48d346a5676413823559a6244c34faa34a5e050f34262872c4c8e0e503b3",
     "builder_sources_sha256": {
-      "tools/make_national_opening_numbers.py": "022b0bba8ca4b86dc24fc27912f920849509f890724cd6b9acf00b2b055a9186",
+      "tools/make_national_opening_numbers.py": "ad868f4a501195581e037f4d5820ddd37c8e50927d5c6bed8213d6a3c7120ede",
       "tools/national_opening_abroad.py": "17aa379d3ad1744633b5ebdd34d9a679f2089284dd5966786c4da244b614cb9f",
       "tools/national_opening_recut.py": "7be2ebed5d6dccedef3ebc9b292d7b4eb648d8408693b8fc3d787c4cd8b2dfc7",
       "tools/national_opening_solve.py": "097cb2ef6f7d39c5e2671ca3365b24bf7b263303e74312b8afee20c9b157e520",
       "tools/national_opening_tiers.py": "ede8309a9f254654d563c4a8fb975c666b61ae0370c3827edb3b0bac895cda61",
-      "tools/national_opening_units.py": "09a6ab4ddec0d975ad8916b4804444e30a768a71ff8b6c379b72a4cb34655509"
+      "tools/national_opening_units.py": "82a0c55433c7b70823d41a2720094ee8379370d8bd23ec447fd054ed56b3b87c"
     },
     "census_text_sha256": "efa195be9d8da65cd0d28ae5967639833c41cba94d1118e6c0896aeeb1b2b215",
     "pay_sha256": "c88289b106d37a723ab0756e5127b1f71fa665e2b92ba50873d3bc5ed0f03267",
@@ -18379,6 +18379,28 @@
         "decimal": "1481818.184800000",
         "exact": "1852272731/1250"
       },
+      "recipe_hours_error": {
+        "decimal": "-0.001283681",
+        "exact": "long: 15227 over 15236 bits"
+      },
+      "recipe_input_errors": {
+        "consumer_goods": {
+          "decimal": "-0.000012703",
+          "exact": "long: 2239 over 2255 bits"
+        },
+        "food": {
+          "decimal": "-0.000075449",
+          "exact": "long: 2233 over 2246 bits"
+        },
+        "materials": {
+          "decimal": "0.000460964",
+          "exact": "long: 5108 over 5119 bits"
+        },
+        "resources": {
+          "decimal": "0.000723128",
+          "exact": "long: 15326 over 15337 bits"
+        }
+      },
       "tax": {
         "decimal": "14931004835.583711112",
         "exact": "long: 2452 over 2418 bits"
@@ -18469,6 +18491,44 @@
         "decimal": "654634681344.000000000",
         "exact": "654634681344/1"
       },
+      "recipe_hours_error": {
+        "decimal": "-0.000025231",
+        "exact": "long: 2272 over 2287 bits"
+      },
+      "recipe_input_errors": {
+        "business_services": {
+          "decimal": "-0.000000052",
+          "exact": "long: 17466 over 17490 bits"
+        },
+        "consumer_goods": {
+          "decimal": "0.000001099",
+          "exact": "long: 17475 over 17495 bits"
+        },
+        "household_services": {
+          "decimal": "-0.000001573",
+          "exact": "long: 12578 over 12597 bits"
+        },
+        "housing": {
+          "decimal": "0.000001360",
+          "exact": "long: 12605 over 12624 bits"
+        },
+        "leisure": {
+          "decimal": "-0.000000400",
+          "exact": "long: 17464 over 17486 bits"
+        },
+        "materials": {
+          "decimal": "0.000000755",
+          "exact": "long: 15350 over 15370 bits"
+        },
+        "resources": {
+          "decimal": "-0.000003761",
+          "exact": "long: 2316 over 2334 bits"
+        },
+        "utility": {
+          "decimal": "-0.000000376",
+          "exact": "long: 12574 over 12595 bits"
+        }
+      },
       "tax": {
         "decimal": "652064586.874231087",
         "exact": "long: 2839 over 2810 bits"
@@ -18554,6 +18614,28 @@
       "recipe_cost_rounded_micros": {
         "decimal": "4831599.943000000",
         "exact": "4831599943/1000"
+      },
+      "recipe_hours_error": {
+        "decimal": "0.001777509",
+        "exact": "long: 10355 over 10364 bits"
+      },
+      "recipe_input_errors": {
+        "consumer_goods": {
+          "decimal": "0.000275309",
+          "exact": "long: 5111 over 5123 bits"
+        },
+        "food": {
+          "decimal": "-0.000032904",
+          "exact": "long: 2969 over 2984 bits"
+        },
+        "materials": {
+          "decimal": "-0.000005792",
+          "exact": "long: 2935 over 2952 bits"
+        },
+        "resources": {
+          "decimal": "-0.000333289",
+          "exact": "long: 10445 over 10456 bits"
+        }
       },
       "tax": {
         "decimal": "6508309951.434347756",
@@ -18645,6 +18727,44 @@
         "decimal": "1594131.609800000",
         "exact": "7970658049/5000"
       },
+      "recipe_hours_error": {
+        "decimal": "0.002290127",
+        "exact": "long: 15230 over 15239 bits"
+      },
+      "recipe_input_errors": {
+        "business_services": {
+          "decimal": "-0.000000451",
+          "exact": "long: 2235 over 2256 bits"
+        },
+        "food": {
+          "decimal": "-0.000025767",
+          "exact": "long: 2239 over 2254 bits"
+        },
+        "household_services": {
+          "decimal": "-0.000041559",
+          "exact": "long: 5093 over 5108 bits"
+        },
+        "housing": {
+          "decimal": "-0.000068063",
+          "exact": "long: 5111 over 5125 bits"
+        },
+        "leisure": {
+          "decimal": "-0.000019340",
+          "exact": "long: 2240 over 2256 bits"
+        },
+        "materials": {
+          "decimal": "-0.000059513",
+          "exact": "long: 5112 over 5126 bits"
+        },
+        "resources": {
+          "decimal": "0.000214207",
+          "exact": "long: 15329 over 15341 bits"
+        },
+        "utility": {
+          "decimal": "0.000022981",
+          "exact": "long: 5093 over 5108 bits"
+        }
+      },
       "tax": {
         "decimal": "469261700.286456740",
         "exact": "long: 2838 over 2810 bits"
@@ -18730,6 +18850,28 @@
       "recipe_cost_rounded_micros": {
         "decimal": "824888.341180000",
         "exact": "41244417059/50000"
+      },
+      "recipe_hours_error": {
+        "decimal": "0.000546881",
+        "exact": "long: 10329 over 10339 bits"
+      },
+      "recipe_input_errors": {
+        "consumer_goods": {
+          "decimal": "0.000016012",
+          "exact": "long: 5092 over 5108 bits"
+        },
+        "food": {
+          "decimal": "0.000002513",
+          "exact": "long: 2942 over 2960 bits"
+        },
+        "materials": {
+          "decimal": "0.000011234",
+          "exact": "long: 2965 over 2982 bits"
+        },
+        "resources": {
+          "decimal": "-0.000003468",
+          "exact": "long: 10427 over 10446 bits"
+        }
       },
       "tax": {
         "decimal": "1729212470.048009952",
@@ -18822,6 +18964,44 @@
         "decimal": "2875285.235100000",
         "exact": "28752852351/10000"
       },
+      "recipe_hours_error": {
+        "decimal": "0.002000000",
+        "exact": "1/500"
+      },
+      "recipe_input_errors": {
+        "business_services": {
+          "decimal": "0.000000346",
+          "exact": "long: 15260 over 15282 bits"
+        },
+        "consumer_goods": {
+          "decimal": "-0.000009860",
+          "exact": "long: 15263 over 15279 bits"
+        },
+        "food": {
+          "decimal": "0.000007469",
+          "exact": "long: 13118 over 13135 bits"
+        },
+        "household_services": {
+          "decimal": "-0.000002584",
+          "exact": "long: 10365 over 10384 bits"
+        },
+        "housing": {
+          "decimal": "-0.000003452",
+          "exact": "long: 10388 over 10406 bits"
+        },
+        "leisure": {
+          "decimal": "0.000003673",
+          "exact": "long: 15256 over 15274 bits"
+        },
+        "materials": {
+          "decimal": "0.000015965",
+          "exact": "long: 13141 over 13157 bits"
+        },
+        "utility": {
+          "decimal": "0.000009008",
+          "exact": "long: 10368 over 10384 bits"
+        }
+      },
       "tax": {
         "decimal": "173247042.369534274",
         "exact": "long: 2837 over 2810 bits"
@@ -18912,6 +19092,44 @@
         "decimal": "1541476.145000000",
         "exact": "308295229/200"
       },
+      "recipe_hours_error": {
+        "decimal": "0.001145572",
+        "exact": "long: 13076 over 13086 bits"
+      },
+      "recipe_input_errors": {
+        "business_services": {
+          "decimal": "0.000002382",
+          "exact": "long: 2236 over 2255 bits"
+        },
+        "consumer_goods": {
+          "decimal": "0.000084741",
+          "exact": "long: 2244 over 2257 bits"
+        },
+        "household_services": {
+          "decimal": "0.000013550",
+          "exact": "long: 2948 over 2964 bits"
+        },
+        "housing": {
+          "decimal": "-0.000077986",
+          "exact": "long: 2973 over 2987 bits"
+        },
+        "leisure": {
+          "decimal": "-0.000011525",
+          "exact": "long: 2235 over 2252 bits"
+        },
+        "materials": {
+          "decimal": "-0.000088959",
+          "exact": "long: 2971 over 2985 bits"
+        },
+        "resources": {
+          "decimal": "-0.000321956",
+          "exact": "long: 13186 over 13198 bits"
+        },
+        "utility": {
+          "decimal": "0.000012847",
+          "exact": "long: 2946 over 2962 bits"
+        }
+      },
       "tax": {
         "decimal": "701379004.770547616",
         "exact": "long: 2840 over 2811 bits"
@@ -19001,6 +19219,40 @@
         "decimal": "21561571.227500000",
         "exact": "8624628491/400"
       },
+      "recipe_hours_error": {
+        "decimal": "-0.000122299",
+        "exact": "long: 10323 over 10336 bits"
+      },
+      "recipe_input_errors": {
+        "business_services": {
+          "decimal": "-0.000024708",
+          "exact": "long: 5086 over 5101 bits"
+        },
+        "consumer_goods": {
+          "decimal": "-0.000569984",
+          "exact": "long: 5085 over 5096 bits"
+        },
+        "food": {
+          "decimal": "0.000086280",
+          "exact": "long: 2937 over 2951 bits"
+        },
+        "housing": {
+          "decimal": "0.000475760",
+          "exact": "51349169507171992018862767949223841447997464394077728994774452047/107930895642704458140834100477077244969157065663025748100894047600640"
+        },
+        "materials": {
+          "decimal": "-0.000649309",
+          "exact": "long: 2967 over 2977 bits"
+        },
+        "resources": {
+          "decimal": "0.000561236",
+          "exact": "long: 10425 over 10435 bits"
+        },
+        "utility": {
+          "decimal": "-0.000263968",
+          "exact": "-1467287556297607905329862262445286823133414525023075834627/5558591333483392290221118432352877655428780167513139394379776"
+        }
+      },
       "tax": {
         "decimal": "19541573683.515155047",
         "exact": "long: 2843 over 2809 bits"
@@ -19089,6 +19341,40 @@
       "recipe_cost_rounded_micros": {
         "decimal": "1833866.614000000",
         "exact": "916933307/500"
+      },
+      "recipe_hours_error": {
+        "decimal": "0.001525951",
+        "exact": "long: 15220 over 15230 bits"
+      },
+      "recipe_input_errors": {
+        "business_services": {
+          "decimal": "0.000012531",
+          "exact": "long: 2236 over 2252 bits"
+        },
+        "consumer_goods": {
+          "decimal": "-0.000257377",
+          "exact": "long: 2240 over 2252 bits"
+        },
+        "food": {
+          "decimal": "0.000117495",
+          "exact": "long: 2232 over 2245 bits"
+        },
+        "housing": {
+          "decimal": "0.000169001",
+          "exact": "long: 5101 over 5114 bits"
+        },
+        "materials": {
+          "decimal": "0.000263040",
+          "exact": "long: 5101 over 5113 bits"
+        },
+        "resources": {
+          "decimal": "0.000117537",
+          "exact": "long: 15318 over 15331 bits"
+        },
+        "utility": {
+          "decimal": "0.000134583",
+          "exact": "long: 5085 over 5098 bits"
+        }
       },
       "tax": {
         "decimal": "444841688.437523455",
@@ -19180,6 +19466,44 @@
         "decimal": "3738589.578000000",
         "exact": "1869294789/500"
       },
+      "recipe_hours_error": {
+        "decimal": "0.001214837",
+        "exact": "long: 13103 over 13113 bits"
+      },
+      "recipe_input_errors": {
+        "business_services": {
+          "decimal": "-0.000048484",
+          "exact": "long: 5105 over 5119 bits"
+        },
+        "consumer_goods": {
+          "decimal": "-0.000164270",
+          "exact": "long: 5110 over 5123 bits"
+        },
+        "food": {
+          "decimal": "0.000104055",
+          "exact": "long: 2969 over 2982 bits"
+        },
+        "household_services": {
+          "decimal": "0.000330056",
+          "exact": "long: 2973 over 2985 bits"
+        },
+        "housing": {
+          "decimal": "0.000326118",
+          "exact": "long: 2940 over 2951 bits"
+        },
+        "leisure": {
+          "decimal": "0.000162717",
+          "exact": "long: 5103 over 5115 bits"
+        },
+        "resources": {
+          "decimal": "-0.000128406",
+          "exact": "long: 13202 over 13215 bits"
+        },
+        "utility": {
+          "decimal": "-0.000149602",
+          "exact": "long: 2965 over 2977 bits"
+        }
+      },
       "tax": {
         "decimal": "1006718272.123393336",
         "exact": "long: 2840 over 2810 bits"
@@ -19268,6 +19592,40 @@
       "recipe_cost_rounded_micros": {
         "decimal": "549266984.375000000",
         "exact": "4394135875/8"
+      },
+      "recipe_hours_error": {
+        "decimal": "-0.002181913",
+        "exact": "-7493737722480571780271587/3434480482052146736978824675"
+      },
+      "recipe_input_errors": {
+        "business_services": {
+          "decimal": "0.000054679",
+          "exact": "long: 15172 over 15187 bits"
+        },
+        "consumer_goods": {
+          "decimal": "-0.000193166",
+          "exact": "long: 15175 over 15187 bits"
+        },
+        "food": {
+          "decimal": "-0.000495066",
+          "exact": "long: 13033 over 13044 bits"
+        },
+        "housing": {
+          "decimal": "0.000350289",
+          "exact": "long: 10303 over 10315 bits"
+        },
+        "materials": {
+          "decimal": "-0.000125036",
+          "exact": "long: 13045 over 13058 bits"
+        },
+        "resources": {
+          "decimal": "0.000856915",
+          "exact": "148955474883936345867485877587541895278353693/173827666510743911093575155687269978171087257600"
+        },
+        "utility": {
+          "decimal": "-0.000024228",
+          "exact": "long: 10273 over 10289 bits"
+        }
       },
       "tax": {
         "decimal": "23464249.355670277",

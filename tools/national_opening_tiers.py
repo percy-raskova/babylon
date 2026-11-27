@@ -314,11 +314,10 @@ def place_incomes(o: Opening, census: Census) -> dict[str, _Income]:
     """Each part's incomes at the exact solve (decision 1): `OI_c = sum_j (OI[j] emp_c,j / emp_j +
     mu[j] (payroll_c,j - wexact[j] x 160 x emp_c,j))`, with `wexact x 160 x emp_c = payroll_j x
     emp_c / emp_j`; its public-owned part `PO_c` by the same rule over public employee persons
-    and payroll, with the PUBLIC workers' own mean wage as the reference (`public payroll_j x
-    pub_emp_c / pub_emp_j`), so that its margin term sums to 0 over parts as the whole part's
-    does and `sum PO_c` is Task 10's `PO` (with the trade's mean wage it would differ from `PO`
-    by the public workers' pay against the trade's: a deviation from decision 1's words, which
-    say the term "sums to 0"); its private part is the rest. Both sum over parts to the nation's."""
+    (`OI[j] pub_emp_c,j / emp_j`), with the TRADE's wage `wexact[j]` as the reference of its margin
+    term (`mu[j] (pub_payroll_c,j - wexact[j] x 160 x pub_emp_c,j)`, the trade's payroll x
+    pub_emp_c / emp_j), so that `sum PO_c` is Task 10's `PO` (`public_owned_income`); its private
+    part is the rest. Both sum over parts to the nation's."""
     out: dict[str, _Income] = {}
     for place in census.places:
         total = _ZERO
@@ -337,18 +336,14 @@ def place_incomes(o: Opening, census: Census) -> dict[str, _Income]:
                 / MICROS
             )
             public += value * Fraction(row.public_employee_persons, of)
-            if site.public_employee_persons > 0:
-                public += (
-                    mu
-                    * (
-                        row.public_payroll_micros
-                        - Fraction(
-                            site.public_payroll_micros * row.public_employee_persons,
-                            site.public_employee_persons,
-                        )
-                    )
-                    / MICROS
+            public += (
+                mu
+                * (
+                    row.public_payroll_micros
+                    - Fraction(site.payroll_micros * row.public_employee_persons, of)
                 )
+                / MICROS
+            )
         wages = sum((Fraction(c.wage_income_micros, MICROS) for c in place.keys.values()), _ZERO)
         out[place.label] = _Income(wages=wages, private=total - public, public_owned=public)
     return out
@@ -769,17 +764,27 @@ def national_prices(o: Opening, w: Written, economy: Economy) -> dict[str, Fract
     of the solve only (nothing is written from it). Rounding rules: the shop's wage in micros an
     hour, half up (as `_Prices`); the charge a unit, up; the saving a unit exact, and the price
     on `TIER_GRID` (to the nearest 1/TIER_GRID, a half up) only where the saving makes it
-    fractional."""
+    fractional. A shop good with no handling block is refused (`tiers_price: <product>`)."""
     q = o.quantities
     out: dict[str, Fraction] = {}
     trade_of = _trade_of(economy)
     shop = economy.shop_trade
+    for product, trade in sorted(trade_of.items()):
+        if (
+            shop is not None
+            and product in economy.shop_goods
+            and trade not in (economy.capital_trade, economy.extraction_trade)
+            and w.products[product].handling is None
+        ):
+            # A shop good with no handling block has no shop price to post: refused, never passed
+            # at its written price.
+            raise _fail("tiers_price", product)
     shop_wage = half_up(q.wage[shop] * MICROS) if shop is not None else 0
     for product, trade in sorted(trade_of.items()):
         made = w.products[product]
         if trade in (economy.capital_trade, economy.extraction_trade):
             continue
-        if made.handling is not None and shop is not None and product in economy.shop_goods:
+        if shop is not None and product in economy.shop_goods and made.handling is not None:
             res = q.final[trade] - o.exports.get(trade, _ZERO)
             saving = (
                 o.shop_saving.get(trade, _ZERO) / res * made.dollars_per_unit * MICROS
@@ -1219,6 +1224,10 @@ class Tiers:
     tier_costs: tuple[Fraction, Fraction] = (_ZERO, _ZERO)  # at written contents, micros a person
     accounts: tuple[Account, ...] = ()
     kept_micros: Mapping[tuple[str, HouseholdKey], Fraction] = field(default_factory=dict)
+    # Every account whose money does not reach its own tier 1 at its own posted prices, as
+    # (part label, key, gap in micros), sorted by part then key, for the metadata. A no-earner
+    # account is promised its needs (O12, ruling 3): the slow test asserts none is here.
+    short_accounts: tuple[tuple[str, str, int], ...] = ()
 
 
 def _check_tier_money(
@@ -1320,6 +1329,12 @@ def tiers(
             own_totals[good] = own_totals.get(good, _ZERO) + units
     counts = _count_services(o, census, w, settings, economy, final)
     bodies = place_bodies(o, census, w, settings, economy)
+    short: list[tuple[str, str, int]] = []
+    for account in accts:
+        need = _cost(account, ones[account.key], account.own_prices)
+        if account.money_micros < need:
+            # Rounding rule: the gap a period, up to a whole micro.
+            short.append((account.place, account.key, _ceil(need - account.money_micros)))
     payments = sum(
         (est * a.persons for a in accts for est in [_estimate_of(drafts, a)] if est is not None), 0
     )
@@ -1346,6 +1361,7 @@ def tiers(
         tier_costs=(c2, c3),
         accounts=accts,
         kept_micros={k: v.left_micros for k, v in final.items()},
+        short_accounts=tuple(sorted(short)),
     )
 
 

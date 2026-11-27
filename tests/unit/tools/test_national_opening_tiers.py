@@ -299,6 +299,17 @@ def hand_written(**more: Any) -> u.Written:
     return u.Written(**fields)
 
 
+def test_a_shop_good_with_no_handling_block_is_refused() -> None:
+    """A shop good is posted at what its shop pays, so a written product with no handling block
+    has no price of the solve (`tiers_price`): it is refused, never passed at its written price."""
+    w = hand_written()
+    assert w.products["food"].handling is None
+    economy = replace(ECON, product={FOOD_T: "food", UTIL_T: "utility"})
+    assert "food" in economy.shop_goods
+    with pytest.raises(ReferenceBuildError, match=r"^tiers_price: food$"):
+        t.national_prices(hand_opening(), w, economy)
+
+
 def hand_trade(**more: Any) -> r.TradeCount:
     fields = dict.fromkeys(
         (
@@ -512,9 +523,14 @@ def test_place_money_sums_to_the_nation() -> None:
     oi = sum((i.private + i.public_owned for i in incomes.values()), F(0))
     assert oi == sum(o.operating_income.values(), F(0))
     # The places pay unlike wages (food 0.6 against 0.35 million an employee; the public workers of
-    # household services 0.75 against 0.5), so each O5 margin term is not 0, and the public-owned
-    # part follows the public workers (10 of 40 persons) while its terms sum to 0 as well.
-    assert sum((i.public_owned for i in incomes.values()), F(0)) == F(60) * 10 / 40
+    # household services 0.75 against 0.5), so each O5 margin term is not 0. The public-owned part
+    # follows decision 1's words: the trade's operating income over the public workers' share of
+    # persons (60 x 10 / 40 = 15), plus the margin on the public payroll above that share of the
+    # trade's payroll (mu 1/5 x (6 - 20 x 10 / 40) = 1/5), which is Task 10's `PO`.
+    assert sum((i.public_owned for i in incomes.values()), F(0)) == F(60) * 10 / 40 + F(1, 5)
+    assert sum((i.public_owned for i in incomes.values()), F(0)) == s.public_owned_income(
+        o.operating_income, o.prices.margins, census.trades
+    )
     plain = F(100) * 60 / 100 + F(60) * 10 / 40  # place 01001's share of OI with no margin term
     first = incomes["01001"]
     assert first.private + first.public_owned != plain
@@ -771,31 +787,18 @@ def decimal(value: F, places: int = 4) -> str:
     return f"{'-' if value < 0 else ''}{scaled // 10**places}.{scaled % 10**places:0{places}d}"
 
 
-# Counted on the committed tables (27 November): 8 of 1,896 accounts cannot reach their own tier 1,
-# six collective residences and two earning accounts (02158/at, 04019/above). The plan (Task 11,
-# Step 1) asks that none fail; the lead or the Director rules whether the residence or earning
-# rule changes or the plan's text is amended. Until then the assertion stands as the plan has it
-# and the test is an expected failure that names them: it is strict, so it turns red the day the
-# accounts open and the mark must be removed.
 @pytest.mark.slow
-@pytest.mark.xfail(
-    strict=True,
-    reason="8 accounts of the committed tables (6 residences, 02158/at, 04019/above) cannot reach"
-    " their own tier 1: awaiting the lead's ruling (change the rule or amend the plan)",
-)
-def test_no_account_opens_without_its_tier_one(committed: Any) -> None:
-    _, _, _, settings, tiers = committed
-    shape = t.shape_of(settings, r.TWELVE)
-    short = []
-    for a in tiers.accounts:
-        rows = t.tier_one_rows(a.key, shape, r.TWELVE)
-        cost = t._cost(a, rows, a.own_prices)
-        if a.money_micros < cost:
-            short.append((a.place, a.key, cost - a.money_micros))
-    print(f"accounts short of tier 1: {len(short)} of {len(tiers.accounts)}")  # noqa: T201
-    for place, key, gap in short:
+def test_no_account_with_no_earner_opens_without_its_tier_one(committed: Any) -> None:
+    """O12 and ruling 3: every NO-EARNER account's money reaches its tier 1 at its own posted
+    prices. Every other account that does not is held in `Tiers.short_accounts` (for the
+    metadata): printed here, nothing asserted of them (27 November: the plan's own amendment)."""
+    _, _, _, _, tiers = committed
+    print(f"accounts short of tier 1: {len(tiers.short_accounts)} of {len(tiers.accounts)}")  # noqa: T201
+    for place, key, gap in tiers.short_accounts:
         print(f"  {place}/{key}: short {gap} micros")  # noqa: T201
-    assert not short
+    assert list(tiers.short_accounts) == sorted(tiers.short_accounts)
+    no_earner = [row_ for row_ in tiers.short_accounts if row_[1].startswith("no_earner")]
+    assert not no_earner, no_earner
 
 
 @pytest.mark.slow
@@ -879,12 +882,6 @@ def test_the_services_of_the_places_are_counted(committed: Any) -> None:
 
 
 @pytest.mark.slow
-@pytest.mark.xfail(
-    strict=True,
-    reason="the fund's receipts fall short of BEN + grants by the public wear the compiler sizes on"
-    " the written machine price (Task 10 sizes the grant on the solve's wear share): awaiting the"
-    " lead's ruling (size the grant and tax on the written wear, or amend the plan's bound)",
-)
 def test_the_fund_closes_with_its_grants(committed: Any) -> None:
     o, w, census, settings, tiers = committed
     receipts = sum(
@@ -933,6 +930,25 @@ def test_the_fund_closes_with_its_grants(committed: Any) -> None:
         f"{len(shares)}; lowest share {shares[0]} highest {shares[-1]}"
     )
     assert abs(receipts - o.benefits - grants) <= long_parts + 1
+
+
+@pytest.mark.slow
+def test_the_parts_public_owned_income_is_the_solves(committed: Any) -> None:
+    """Decision 1: the parts' public-owned income, by the same rule as the private one over the
+    trade's wage, sums to the solve's `PO`, and their payout to `(1 - t) PO`, each within one
+    micro an account."""
+    o, _, census, _, tiers = committed
+    incomes = t.place_incomes(o, census)
+    owned = sum((i.public_owned for i in incomes.values()), F(0))
+    payout = sum((p for _taxes, p, _payments in tiers.place_bodies.values()), F(0))
+    slack = F(len(tiers.accounts), s.MICROS)
+    print(  # noqa: T201
+        f"public-owned income of the parts {decimal(owned, 6)} against PO "
+        f"{decimal(o.public_owned_income, 6)}; payout {decimal(payout, 6)} against "
+        f"{decimal((1 - o.tax_rate) * o.public_owned_income, 6)}"
+    )
+    assert abs(owned - o.public_owned_income) <= slack
+    assert abs(payout - (1 - o.tax_rate) * o.public_owned_income) <= slack
 
 
 @pytest.mark.slow

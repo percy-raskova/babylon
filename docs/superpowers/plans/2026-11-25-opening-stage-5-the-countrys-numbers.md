@@ -2343,7 +2343,8 @@ pub(super) struct Share { pub maker: SiteId, pub part: u128, pub whole: u128 }
 /// times the buyers' whole weight, kept exact as `employed x whole weight` against `weight x all makers' employed`.
 /// Buyers in order of weight, largest first, then by site id; each takes room from the makers of the nearest
 /// location that has room left (`nearest` gives it; inside a location the makers by site id), then the next
-/// nearest, up to `most` makers; the last takes whatever is left.
+/// nearest, up to `most` makers; the last takes whatever is left. So a caller sets `most` to the number of the
+/// stalls where no buyer may be dealt past the makers' room (the buyers abroad, decision 3).
 pub(super) fn deal_by_room(custom: &[Custom], stalls: &[Stall], most: usize,
     nearest: &mut dyn FnMut(EconomicLocation, &BTreeSet<EconomicLocation>) -> Result<Option<EconomicLocation>>)
     -> Result<BTreeMap<AccountId, Vec<Share>>>;
@@ -2365,10 +2366,18 @@ pub(super) fn routable(builder: &Builder<'_>, network: &mut Network<'_>, from: E
    home buyers of a good are dealt together, and the buyers abroad together, each against the makers' people
    afresh: each maker's whole custom is then in proportion to its people. This dealing follows the scenario's
    numbers, and it may: nothing of it is in Task 8's census.
-3. **Goods:** `deal_by_room` with `most = 3` for home buyers and `most = 16` for buyers abroad (a buyer abroad is a
-   whole region's trade, as large as many makers). The buyer's cap is dealt over its makers by `caps`; each row
-   keeps today's `target_stock` and `cash_floor`. A maker is never dealt itself. A domestic buyer's row abroad
-   is today's.
+3. **Goods:** `deal_by_room` with `most = 3` for home buyers. **The buyers abroad have no limit** (amended on 26
+   November, in the build): `most` is the number of the dealing's stalls, and its stalls are the good's home
+   makers from whose location a route can be built to at least one buyer abroad of the good (`routable`; a maker
+   that reaches none holds room nobody could take, so it is no stall of this dealing, and the count of such makers
+   and their people is printed for each good). A buyer abroad is a whole region's trade: counted in the first
+   build of this task, one buyer abroad of food asks a sixth of all the food asked of home makers, the sixteen
+   largest makers hold 29% of the trade's people, and nine tenths of what is asked of home makers is asked from
+   abroad. With a limit of sixteen the sixteenth maker took the rest past its room: a maker of 33 people was asked
+   4,976 times the nation's ratio. With no limit a buyer takes the nearest room, then the next, until its cap is
+   dealt, the rooms are used up together, and the rows of a good's buyers abroad cannot pass its stalls plus
+   those buyers less one. The buyer's cap is dealt over its makers by `caps`; each row keeps today's
+   `target_stock` and `cash_floor`. A maker is never dealt itself. A domestic buyer's row abroad is today's.
 4. **Machines:** one maker a process (the engine's rule): the home buyers of machines are dealt with `most = 1`, a
    process's weight its replacement machines (Task 6). Task 5's rule on which processes buy abroad stays.
 5. **Nearness** is the network's own (`Network::nearest`: hops to the buyer's location, by the good's cargo
@@ -2377,8 +2386,9 @@ pub(super) fn routable(builder: &Builder<'_>, network: &mut Network<'_>, from: E
 6. **When a buyer wants less than its caps together,** the engine serves its rows in its own order and the last go
    short (`recurring/firms.rs` `position`: each row sees what the rows before it ordered). That is today's rule
    for a home and a foreign supplier; this task leaves it.
-7. **Bounds.** Restocking rows and routes grow (up to three home rows a buyer and good, sixteen for a buyer abroad,
-   and a route for each new pair of locations and cargo class). Print and pin the counts of restocking rows,
+7. **Bounds.** Restocking rows and routes grow (up to three home rows a buyer and good; for a good's buyers abroad
+   together at most its stalls plus those buyers less one; and a route for each new pair of locations and cargo
+   class). Print and pin the counts of restocking rows,
    supplier routes, route stages and stage memberships, and print the mean number of pools a stage (memberships
    are the count nearest their bound, 262,144). Past a bound of the engine: `NationalOpeningError::Bounds`; then
    build with `most = 2` at home and say so.
@@ -2398,12 +2408,21 @@ pub(super) fn routable(builder: &Builder<'_>, network: &mut Network<'_>, from: E
     product nothing in the fixture buys is printed and left out.
   - `makers_are_asked_in_proportion` (fixture): for food and materials, the caps asked of a maker from home and
     from abroad over its persons at work lie within a factor of two of the nation's own ratio for makers holding
-    nine tenths of the trade's workers (print the shares under half and over twice).
+    nine tenths of the trade's workers (print the shares under half and over twice). Print the same two shares
+    for what home buyers alone ask, for each good; they are handed over and not asserted (in the first build food
+    was 8.5% under and 1.1% over at home): in the fixture nine tenths of what is asked is asked from abroad, so
+    the home dealing shows in the rebuilt scenario's own report (Task 15), not here.
   - `buyers_abroad_are_dealt_over_the_country` (fixture): the buyers abroad of food are dealt more than one home
-    maker between them, and no home maker is asked from abroad for more than twice its share by people.
+    maker between them, and no home maker is asked from abroad for more than twice its share by people (its
+    people over the people of the dealing's stalls). Print, for each good: the home makers and their people
+    outside the dealing (no route to any buyer abroad), the rows from abroad, the widest buyer's rows and the
+    largest multiple of its share that a maker is asked.
   - `an_installation_need_follows_its_site_s_makers` (fixture): a process whose machines need materials restocks
     them from the makers its site is dealt for materials.
   - `the_shipped_restocking_is_unchanged`: `binary(shipped_world_bytes)`.
+  - `the_dealing_of_goods_fits_its_bounds` (fixture; the first build added it for decision 7): the four counts,
+    pinned. The first build filled its pin under the limit of sixteen and committed nothing: the pin is filled
+    once from the first failing run of the rule as amended.
 - [ ] **Step 2: Run them and see them fail.**
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** the crate tests, `binary(national_twelve_trades)`, `binary(shipped_world_bytes)`,
@@ -4898,3 +4917,20 @@ Where a line below says a finding waits for Part II, the next section says where
   service across the border (call 33); a country service's buyers are dealt whole, at home first (call 34); and
   housing, household services and public provision are bought in the buyer's own place, where the pick says "in
   their own state" (call 30).
+
+## What run B found in the build (26 November)
+
+- **Task 7d stopped once, on the lead's own rule.** Its first builder built the task as written and two of its
+  tests could not be met: with at most sixteen makers a buyer abroad, the sixteenth maker took what was left of a
+  whole region's trade (53.6% of the people at food makers were asked under half or over twice the nation's ratio,
+  against a bound of 10%, and seven makers were asked from abroad for more than twice their share). The builder
+  changed no figure and stopped, as ordered. The lead had mended the same fault for services in Task 7e before the
+  build and had not counted it for goods. The task's decision 3 now gives the buyers abroad no limit, among the
+  makers a route reaches; the tests' bounds are as they were.
+- **What the dealing of services did,** on the fixture (Task 7b's hand-over): the people at providers with no
+  buyer fell from 64.3% to 0.7% in household services, from 62.4% to 0.0% in public provision, from 49.0% to none
+  in utility and from 31.8% to 0.7% in premises. On a copy with the three country services, 10.0% of utility,
+  2.4% of leisure and 11.3% of business services crosses a state line, as counted for the plan.
+- **What the border did** (Task 7e's hand-over, on a copy with business services crossing): all 1,670 home buying
+  workplaces have a row abroad; the 88 buying workplaces abroad are dealt over all 1,054 home providers in 1,136
+  rows, the widest of them 90, and no provider is asked more than 1.001 times its room.

@@ -3062,9 +3062,16 @@ def solve(recut: Recut, census: Census, settings: Settings) -> Opening: ...
    it at home), so its whole `S` is the business buyers'.
 8. **Operating income, public money and one tax rate** (model-spec 7; O12, O13; call 5). `Pi[j] = p[j] x[j] mu[j] /
    (1 + mu[j])`; `OI[j] = Pi[j] + U[j] + S[j] - wear[j]` for private trades and `OI[shop] = U[shop]` (decision 7);
-   one below 0 is `negative_operating_income: <trade>`. `PO = sum_j OI[j] x public_employee_persons[j] /
-   employee_persons[j]`. The grant `G = payroll[public] + sum_i a[i][public] p[i] x[public] + wear[public] -
-   S[public] - fee x domestic persons`. Support `SUP = reserve persons x s`, `s = t1q[food] x p[food]`: one period of
+   one below 0 is `negative_operating_income: <trade>`. `PO = sum_j (OI[j] x public_employee_persons[j] /
+   employee_persons[j] + mu[j] x (public_payroll[j] - payroll[j] x public_employee_persons[j] /
+   employee_persons[j]))`: the second term (27 November) is O5's margin on the public-owned workplaces' own wages,
+   the rule Task 11's decision 1 applies place by place, so that the places' public-owned parts sum to `PO`; a
+   trade with no margin has none. The grant `G = payroll[public] + sum_i a[i][public] p[i] x[public] + e x
+   machines[public] / NU - S[public] - fee x domestic persons`: its wear (27 November) is the compiler's own
+   (`wear_per_period`, Task 4), a machine's wear for each of the census's public machines at the machine sized by
+   the machines in use, `NU = sum over the trades with machines of hours[j] / (work_hours_per_person x
+   workers_per_machine[j])` (Task 10b, decision 2); the trades' costs keep `wear[j] = e x M[j] / NM`. Support `SUP =
+   reserve persons x s`, `s = t1q[food] x p[food]`: one period of
    the food need at the producer's price (Task 4, decision 6; `support_unit_price` reads the commodity's price).
    Benefits `BEN` (decision 10). `W` is every trade's census payroll. Then `t = (G + SUP + BEN - PO) / (W + sum OI -
    PO)`, `f = BEN / (t (W + sum OI))`, payout `(1 - t)(sum OI - PO)` (`private_distribution_bps = 10000`). `t` or
@@ -3547,8 +3554,8 @@ def tiers(o: Opening, census: Census, w: Written, settings: Settings) -> Tiers: 
       `payroll_c,public + (G_inputs) x emp_c,public / emp_public + wear_c - fee x public_persons_served_c`,
       `G_inputs = sum_i a[i][public] p[i] x[public] - S[public]`, and `wear_c = public_machines_c x the written
       machine price / machine_life_periods`: the compiler's `wear_per_period` (Task 4), a machine's wear for each
-      of the part's public machines, in use or not, at the price Task 10b writes (27 November: the machine is
-      sized by the machines in use, so this is about 6% above the solve's `wear[public]` share).
+      of the part's public machines, in use or not, at the price Task 10b writes (27 November). The parts' wear
+      sums to the wear in Task 10's grant, which is sized on the same figure.
     A part with `T_c > 0` and `T_c + Q_c >= P_c` sends the rest to the fund: `share_by_part_bps[c] = 10_000 -
     floor(10_000 x (P_c - Q_c) / T_c)`, at least 0 and at most 10,000 (D4's formula with the payout netted, since
     the part's body also receives `Q_c`: lead's decision E5), and has no grant. By its share it keeps `floor(10_000 x
@@ -3653,8 +3660,11 @@ def tiers(o: Opening, census: Census, w: Written, settings: Settings) -> Tiers: 
     `"01011"` with taxes $10, payout $60 and payments $50 has share 10,000 and is listed with $10 kept above even. Part
     `"01007"` with taxes $10, payments $50 of which its providers' grants are $30 and its county support $20 gives
     `place_grant_over_providers: 01007`.
-  - On the committed tables (slow): `no_account_opens_without_its_tier_one` (every place account's money reaches
-    tier 1 at its own posted prices; an account that does not is printed with its place, key and gap);
+  - On the committed tables (slow): `no_account_with_no_earner_opens_without_its_tier_one` (amended on 27
+    November: every NO-EARNER account's money reaches tier 1 at its own posted prices, which is what O12 and
+    ruling 3 promise; every other account whose money does not is printed with its part, key and gap and held in
+    `Tiers.short_accounts`, sorted, for the metadata, and nothing is asserted of them: the builder's first count
+    found 8 of 1,896, named in "What run C found in the build");
     `nothing_is_kept` (at its own prices and written scale no account keeps more than one unit's price of its
     dearest luxury a person); `the_tiers_buy_what_households_must` (each product's `demand_gap` within 1/100,
     leisure's within 1/100); `tier_money_has_its_sizes` (within 1% at written contents); print the number of scaled
@@ -3896,7 +3906,8 @@ def build(*, accounts: Path, pay: Path, census: Path, settings: Settings = Setti
    period and what they cost against the equipment money; each want's exact and written units; each product's
    `demand_gap` and `own_price_gap`;
    `state_services` with each service of the place's `idle` and `unserved` shares (Task 11, decision 12); the four
-   balances at the exact solve and as written; each key's money a person and reach, nationally and by place; the scaled
+   balances at the exact solve and as written; each key's money a person and reach, nationally and by place; the
+   accounts that open short of their own tier 1, each with its part, key and gap (27 November); the scaled
    accounts; each place's body (taxes, payout, payments, its share and its grant), and the parts whose payout alone
    passes their payments, with what each keeps above even (Task 11, decision 11); each region's weights, shares, money a
    person, sales and purchases; what was moved and dropped by rule; the two designed cross-border claims
@@ -4258,9 +4269,11 @@ pub fn opening_ledger(opening: &EconomicOpening, policy: &NationalGamePolicy) ->
     own wage (Task 14b), so a workplace whose provider is dear is the one to fail: a failure is reported with the
     workplace, its cash, payroll, floor and cost, and nothing is loosened.
   - `every_private_price_covers_its_cost_at_the_national_wage`: national price x n at least labor, inputs and wear.
-  - `no_account_opens_going_without`: every domestic account's income reaches its tier 1 at its own sellers' posted
-    prices; pin the count of accounts at each standard and each band's income per person (from the first failing
-    run).
+  - `no_account_with_no_earner_opens_going_without` (amended on 27 November): every domestic NO-EARNER account's
+    income reaches its tier 1 at its own sellers' posted prices (O12, ruling 3). Every other account that does not
+    is written into the report with its part, key and gap, counted and printed, and the count is held against the
+    builder's own (the metadata's list): a difference is reported, not asserted. Pin the count of accounts at each
+    standard and each band's income per person (from the first failing run).
   - `nobody_is_paid_above_their_needs` (ruling 3, E8 and the lead's decision on A-S6): for every domestic no-earner
     account with persons, its whole public income at the opening (its `no_earner` due and its county support) is at
     least its needs' cost at its own sellers' posted prices and less than that cost plus its persons in micros, but
@@ -5131,3 +5144,32 @@ a set. Wayne's part is labelled `26163`. `Quantities` and `Opening` are keyed by
 `posted` and `tier_quantities`, which are keyed by the product of a need. `TemplateFacts` is defined in
 `tools/national_opening_units.py`, since `written` takes it; Task 13 imports it from there. One solve of the
 committed tables takes about 225 seconds, and a slow test module pays it once.
+
+**A second stop, in Task 11 (27 November, 01:30).** Run C2 built Task 10b, whose batches equal the table above row
+for row, and stopped in Task 11's review. The tool is built and committed with two tests marked as expected
+failures, each waiting for the lead.
+
+- **The fund opened $94.4 million a period short** of the benefits and the grants, against an allowance of $18.8
+  million. The cause is the lead's amendment of the same night: Task 11 took each public provider's wear at the
+  written machine price, as the compiler pays it ($1,890.4 million a period), while Task 10 had sized the grant
+  and the tax on the solve's share ($1,786.3 million). Task 10's grant now takes the compiler's wear, so the tax
+  pays for it.
+- **The public-owned income did not sum.** Task 11's decision 1 gives a public-owned workplace O5's margin on its
+  own wage; Task 10's `PO` shared a trade's income by persons alone. By the plan's words the places' parts came
+  to $27,931.7 million against `PO` of $28,374.9 million, and the first build took the public workers' own mean
+  wage as the reference to make them agree. Task 10's `PO` now has the same margin term, and Task 11 keeps its
+  decision's words.
+- **Eight of 1,896 accounts cannot pay for their own needs** at the opening. Six are collective residences, short
+  by $10,535 to $70,055 a period for the whole residence: a residence is paid for its residents with no job, and
+  these have working residents on little or no pay. Two are households that earn, in the lower-paid half:
+  Kusilvak, Alaska (`02158/at`), with $575.73 a person against needs of $737.78, 1,122 of its 3,376 people at
+  work; and Pima, Arizona (`04019/above`), with $1,283.03 against $1,299.46. O12 and ruling 3 promise the needs
+  to households with no earner, and those are all covered. The plan's test had asked it of every account, which
+  no ruling says. It now asserts what is ruled and records the rest; the Director is told, since a floor for
+  households that earn too little would be theirs to rule.
+
+Also from Task 11's hand-over, counted and not asserted: tier contents in whole units a person (comforts: food
+21, materials 9, consumer goods 38, utility 23, housing 10, business services 106, household services 37;
+luxuries: 15, 6, 37, 16, 8, 105, 24 and leisure 1,332); every product's demand within 0.6% of the accounts';
+206 parts send a share to the fund and the fund pays 110; 114 accounts have a luxury scale. The share of use
+that its own state cannot serve is 4.7% for household services, 7.8% for housing and 9.6% for public provision.

@@ -21,7 +21,7 @@ from typing import Final, Literal
 
 from make_national_county_reference import ReferenceBuildError
 from national_opening_recut import TWELVE, Census, Economy, Recut, Settings, half_up
-from national_opening_solve import MICROS, Opening
+from national_opening_solve import MICROS, Opening, machines_in_use
 
 BATCHES: Final = (
     1,
@@ -292,20 +292,6 @@ def _trade_of(economy: Economy) -> dict[str, str]:
     return {product: trade for trade, product in economy.product.items()}
 
 
-def machines_in_use(o: Opening, settings: Settings) -> Fraction:
-    """`NU`, the sum over the trades with machines of `hours[j] / (work hours a person x workers
-    a machine[j])`: the machines the people at work wear (decision 2). Exact."""
-    q = o.quantities
-    return sum(
-        (
-            Fraction(q.hours[trade], settings.work_hours_per_person * workers)
-            for trade, workers in sorted(settings.workers_per_machine.items())
-            if trade in q.hours
-        ),
-        _ZERO,
-    )
-
-
 def _units(o: Opening, persons: int, settings: Settings, economy: Economy) -> dict[str, Fraction]:
     """Accounts dollars in one unit of each product (decisions 1 and 2)."""
     q = o.quantities
@@ -319,7 +305,7 @@ def _units(o: Opening, persons: int, settings: Settings, economy: Economy) -> di
     if extraction is not None and economy.extraction_trade is not None:
         # A minute of extraction work: 1 / (60 x h) (decision 2).
         units[extraction] = Fraction(1) / (60 * q.hours_per_dollar[economy.extraction_trade])
-    in_use = machines_in_use(o, settings)
+    in_use = machines_in_use(q, settings)
     if in_use == 0:
         raise _fail("machines_empty")
     # One machine, sized by the machines IN USE: `NU / life` are worn and bought a period.

@@ -164,6 +164,10 @@ SMALL_SETTINGS = replace(
     paying_order=("food", "household_services"),
     crossing=frozenset({"food", "equipment"}),
     country_services=frozenset(),
+    # The hand world's hours are few: one hour a person and these workers a machine put the
+    # machines in use (19.94) near its 20 census machines, as the committed tables have them.
+    work_hours_per_person=1,
+    workers_per_machine={FOOD: 10, CAP: 8, HS: 50, PUB: 17},
 )
 TRADES5 = SMALL.trades
 OUTPUT = {FOOD: 10000, CAP: 2000, HS: 8000, SHOP: 1000, PUB: 3000}
@@ -480,6 +484,54 @@ def test_every_key_gets_its_support() -> None:
     wages = sum((F(c.payroll_micros, 10**6) for c in census.trades.values()), F(0))
     total = (1 - o.tax_rate) * wages + o.payout + o.support + sum(o.ben_by_account.values(), F(0))
     assert sum(o.bands.values(), F(0)) == total
+
+
+def test_public_owned_income_counts_the_public_wages_over_the_trade_s_share() -> None:
+    private = count_of(
+        FOOD,
+        employee_persons=100,
+        payroll_micros=10_000 * 10**6,
+        public_employee_persons=20,
+        public_payroll_micros=1_500 * 10**6,
+    )
+    shop = count_of(SHOP, employee_persons=50, public_employee_persons=10)
+    # 1000 x 20/100 + 1/4 x (1500 - 10000 x 20/100) = 200 - 125 = 75; no margin, no second term.
+    assert s.public_owned_income({FOOD: F(1000)}, {FOOD: F(1, 4)}, {FOOD: private}) == 75
+    assert (
+        s.public_owned_income(
+            {FOOD: F(1000), SHOP: F(300)}, {FOOD: F(1, 4)}, {FOOD: private, SHOP: shop}
+        )
+        == 75 + 60
+    )
+
+
+def _wear_world() -> tuple[s.Quantities, r.Settings, r.Economy]:
+    economy = economy_of(
+        (FOOD, CAP, PUB),
+        {FOOD: "food", CAP: "equipment", PUB: "public_provision"},
+        public_trade=PUB,
+    )
+    q = hand_q(
+        (FOOD, CAP, PUB),
+        output={FOOD: 1, CAP: 1, PUB: 1},
+        a={},
+        h={FOOD: 1, CAP: 1, PUB: 1},
+        wage={FOOD: 1, CAP: 1, PUB: 1},
+        machines={PUB: 10, FOOD: 12},
+        hours={PUB: 64_000, FOOD: 6_400, CAP: 0},
+    )
+    settings = replace(THREE_SETTINGS, workers_per_machine={PUB: 40, FOOD: 4})
+    return q, settings, economy
+
+
+def test_the_grant_s_wear_is_the_machines_in_use_share() -> None:
+    q, settings, economy = _wear_world()
+    assert s.machines_in_use(q, settings) == 20
+    # NM = 22 census machines, NU = 20 in use: 1000 x 10 / 20, not 1000 x 10 / 22.
+    assert s.grant_wear(F(1000), q, settings, economy) == 500
+    idle = replace(q, hours={PUB: 0, FOOD: 0, CAP: 0})
+    with pytest.raises(ReferenceBuildError, match="^machines_empty"):
+        s.grant_wear(F(1000), idle, settings, economy)
 
 
 def test_refusals_have_their_codes() -> None:

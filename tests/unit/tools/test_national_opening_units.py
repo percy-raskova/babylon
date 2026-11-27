@@ -432,7 +432,7 @@ def test_the_machine_is_sized_by_the_machines_in_use() -> None:
         ),
     )
     settings = replace(SETTINGS, workers_per_machine={FOOD: 4, CAP: 40})
-    assert u.machines_in_use(o, settings) == 20
+    assert s.machines_in_use(o.quantities, settings) == 20
     units = u._units(o, 1, settings, ECONOMY)
     assert units["equipment"] == 11_000
     more = replace(o, quantities=replace(two, machines={FOOD: 1, CAP: 99}))
@@ -612,7 +612,7 @@ def test_rounded_recipes_keep_three_sides(committed: Any) -> None:
             f"lost={(w.batch_hours_lost[trade] * 10**6).__floor__()}ppm"
         )
     assert all(abs(moved) <= F(1, 200) for moved in w.demand_moved.values())
-    in_use = u.machines_in_use(o, settings)
+    in_use = s.machines_in_use(o.quantities, settings)
     cost = w.machines_worn * machine / s.MICROS
     assert abs(cost / o.prices.equipment - 1) <= F(1, 200)
     lines.append(

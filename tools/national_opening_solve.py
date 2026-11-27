@@ -30,6 +30,7 @@ from national_opening_recut import (
     Recut,
     Seller,
     Settings,
+    TradeCount,
     half_up,
     to_grid,
     up_to_grid,
@@ -692,6 +693,54 @@ def _account_cost(
     return (count.persons * person_cost + count.households * household_cost) / count.persons + fee
 
 
+def machines_in_use(q: Quantities, settings: Settings) -> Fraction:
+    """`NU`, the sum over the trades with machines of `hours[j] / (work hours a person x workers
+    a machine[j])`: the machines the people at work wear (decision 2). Exact."""
+    return sum(
+        (
+            Fraction(q.hours[trade], settings.work_hours_per_person * workers)
+            for trade, workers in sorted(settings.workers_per_machine.items())
+            if trade in q.hours
+        ),
+        _ZERO,
+    )
+
+
+def grant_wear(
+    equipment: Fraction, q: Quantities, settings: Settings, economy: Economy = TWELVE
+) -> Fraction:
+    """The public trade's wear in the grant, the compiler's own: `equipment x machines[public]
+    / NU`, `NU` the machines in use (decision 8). Public machines with `NU` of 0: `machines_empty`."""
+    pub = economy.public_trade
+    machines = q.machines.get(pub, 0) if pub is not None else 0
+    if machines == 0:
+        return _ZERO
+    in_use = machines_in_use(q, settings)
+    if in_use == 0:
+        raise _fail("machines_empty")
+    return equipment * machines / in_use
+
+
+def public_owned_income(
+    oi: Mapping[str, Fraction], mu: Mapping[str, Fraction], trades: Mapping[str, TradeCount]
+) -> Fraction:
+    """`PO`: each trade's operating income over its public employees' share of persons, plus the
+    margin on the public payroll above that share of the trade's payroll (decision 8). A trade
+    with no margin (the shop, public provision) has no second term. Payrolls in dollars."""
+    total = _ZERO
+    for j, value in oi.items():
+        site = trades[j]
+        if site.employee_persons <= 0:
+            continue
+        share = Fraction(site.public_employee_persons, site.employee_persons)
+        total += value * share
+        if j in mu:
+            payroll = Fraction(site.payroll_micros, MICROS)
+            public = Fraction(site.public_payroll_micros, MICROS)
+            total += mu[j] * (public - payroll * share)
+    return total
+
+
 def opening(
     recut: Recut,
     census: Census,
@@ -762,16 +811,14 @@ def opening(
         oi[j] = value
     if shop is not None:
         oi[shop] = q.unpaid_labor[shop]
-    po = _ZERO
-    for j, value in oi.items():
-        site = census.trades[j]
-        if site.employee_persons > 0:
-            po += value * site.public_employee_persons / site.employee_persons
+    # The shop's income is its unpaid labor, with no margin: no second term for it.
+    po = public_owned_income(oi, {j: mu[j] for j in private if j != shop}, census.trades)
     wages = sum((Fraction(c.payroll_micros, MICROS) for c in census.trades.values()), _ZERO)
     oi_total = sum(oi.values(), _ZERO)
     persons = needs.persons
     grant = _ZERO
     pub = economy.public_trade
+    gwear = grant_wear(prices.equipment, q, settings, economy)
     if pub is not None:
         inputs = sum(
             (q.coefficients.get(i, {}).get(pub, _ZERO) * p[i] * q.output[pub] for i in private),
@@ -780,7 +827,7 @@ def opening(
         grant = (
             Fraction(census.trades[pub].payroll_micros, MICROS)
             + inputs
-            + wear.get(pub, _ZERO)
+            + gwear
             - saving.get(pub, _ZERO)
             - fee * persons
         )
@@ -796,6 +843,10 @@ def opening(
     if not (0 <= fund_share < 1):
         raise _fail("tax_rate")
     payout = (1 - tax) * (oi_total - po)
+    # The grant pays the public trade's wear on the machines in use; the trades' own wear is on the
+    # census machines. What the grant pays above `wear[public]` reaches the makers of equipment as
+    # revenue that no operating income counts.
+    extra_wear = gwear - wear.get(pub, _ZERO) if pub is not None else _ZERO
     bands = _bands(census, tax, payout, support_unit, ben_by_key)
     kept = _kept(census, bands, needs, settings, economy, fee)
     flows = _balances(
@@ -813,6 +864,7 @@ def opening(
         tr,
         p,
         wear,
+        extra_wear,
     )
     if abs(flows["1"][1]) > 1:
         raise _fail("income_identity")
@@ -911,13 +963,14 @@ def _balances(
     tr: _Trade,
     p: Mapping[str, Fraction],
     wear: Mapping[str, Fraction],
+    extra_wear: Fraction,
 ) -> dict[str, tuple[Fraction, Fraction]]:
     """O6's four balances, each as `(flow, residual)` (decision 13)."""
     spent = n.spending + fee * persons
     receipts = tax * (wages + oi_total) + (1 - tax) * po
     exported = sum((p[t] * x for t, x in tr.exports.items()), _ZERO)
     return {
-        "1": (spent, sum(bands.values(), _ZERO) - spent),
+        "1": (spent, sum(bands.values(), _ZERO) + extra_wear - spent),
         "2": (grant + support + benefits, receipts - (grant + support + benefits)),
         "3": (tr.imports_money, exported - tr.imports_money),
         "4": (tr.equipment, sum(wear.values(), _ZERO) - tr.equipment),

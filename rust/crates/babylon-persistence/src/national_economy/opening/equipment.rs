@@ -1,17 +1,17 @@
 //! Designed opening instruments with finite use, real sourcing and installation.
-use super::{markets, routes, ActorContext, Builder, NationalOpeningError, Result};
+use super::{dealing, markets, routes, ActorContext, Builder, NationalOpeningError, Result};
 use crate::economic_catalog::CatalogCapacity;
 use crate::national_economy::{GameMachines, GameProcurement};
 use babylon_kernel::currency::Currency;
-use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::economic_identity::{EconomicFunction, TradeSet};
 use babylon_kernel::economic_location::EconomicLocation;
 
 use babylon_kernel::content_digest;
 use babylon_material_circuit::{
-    EquipmentAssetId, EquipmentBinding, EquipmentCarryingValue, EquipmentCohortId,
+    AccountId, EquipmentAssetId, EquipmentBinding, EquipmentCarryingValue, EquipmentCohortId,
     EquipmentDefinition, EquipmentDefinitionId, EquipmentPosition, InstallationInput,
     InstallationPolicy, InstallationTarget, InstalledEquipmentCohort, InvestmentPolicy, ProcessId,
-    ProductiveEquipment, RollingProcessSupply, StaffingPoolBinding, StaffingWorkSource,
+    ProductiveEquipment, RollingProcessSupply, SiteId, StaffingPoolBinding, StaffingWorkSource,
     SupplierRoute, SupplierTransport,
 };
 use markets::Preferences;
@@ -54,11 +54,13 @@ pub(super) fn wire(
         }
     }
     let abroad = equipment_abroad(builder)?;
+    let machines = deal_machines(builder, providers, network, &abroad, &definitions)?;
     let mut sourcing = Sourcing {
         providers,
         network,
         preferences,
         abroad: &abroad,
+        machines: machines.as_ref(),
     };
     let actors: Vec<_> = builder.actors.values().cloned().collect();
     let ages = machine_ages(processes_with_machines(builder, &actors)?)?;
@@ -105,6 +107,60 @@ struct Sourcing<'a, 'n> {
     network: &'a mut Network<'n>,
     preferences: &'a mut Preferences,
     abroad: &'a BTreeSet<ProcessId>,
+    /// Under schema 8, the maker each home process that buys its machines at home was dealt.
+    machines: Option<&'a BTreeMap<SiteId, SiteId>>,
+}
+
+/// Under schema 8, deals the home processes that buy their machines at home one maker each (the engine's rule),
+/// by nearness and room: a process's weight is its replacement machines. `None` under schema 7 and earlier.
+fn deal_machines(
+    builder: &Builder<'_>,
+    providers: &Providers,
+    network: &mut Network<'_>,
+    abroad: &BTreeSet<ProcessId>,
+    definitions: &BTreeMap<EconomicFunction, EquipmentDefinition>,
+) -> Result<Option<BTreeMap<SiteId, SiteId>>> {
+    if builder.policy.trades != TradeSet::Twelve
+        || !matches!(
+            builder.policy.markets.procurement,
+            GameProcurement::ByProduct { .. }
+        )
+    {
+        return Ok(None);
+    }
+    let good = builder.commodity("equipment")?;
+    let cargo = good.cargo.ok_or(NationalOpeningError::Policy)?;
+    let Some(locations) = providers.get(&(good.good_id, good.unit_id)) else {
+        return Ok(Some(BTreeMap::new()));
+    };
+    let mut weights = Vec::new();
+    for actor in builder.actors.values() {
+        let Some(process) = actor.process_id else {
+            continue;
+        };
+        if !matches!(actor.location, EconomicLocation::County(_)) || abroad.contains(&process) {
+            continue;
+        }
+        let definition = definitions
+            .get(&actor.function)
+            .ok_or(NationalOpeningError::Policy)?;
+        weights.push((
+            actor.site_id,
+            replacement_units(builder, actor, definition)?,
+        ));
+    }
+    let custom = dealing::customs(builder, weights.into_iter())?;
+    let makers = dealing::domestic_makers(builder, locations)?;
+    let dealt = dealing::deal_makers(builder, network, cargo, &custom, &makers, 1)?;
+    Ok(Some(
+        dealt
+            .into_iter()
+            .filter_map(|(buyer, shares)| match (buyer, shares.first()) {
+                (AccountId::Site(site), Some(share)) => Some((site, share.maker)),
+                _ => None,
+            })
+            .collect(),
+    ))
 }
 
 /// Which domestic processes buy their machines abroad (schema 8): processes in order of
@@ -571,6 +627,7 @@ fn policies(
         network,
         preferences,
         abroad,
+        machines,
     } = sourcing;
     let process = actor.process_id.ok_or(NationalOpeningError::Identity)?;
     let Some((starts, maximum)) = installation_policy(builder, actor, definition, equipment)?
@@ -596,14 +653,21 @@ fn policies(
     let locations = providers
         .get(&(good.good_id, good.unit_id))
         .ok_or(NationalOpeningError::MissingObservation)?;
-    let primary = markets::primary_supplier(
-        locations,
-        network,
-        preferences,
-        actor.location,
-        actor.site_id,
-        &good,
-    )?;
+    let dealt = machines.filter(|_| {
+        matches!(actor.location, EconomicLocation::County(_)) && !abroad.contains(&process)
+    });
+    let primary = if let Some(dealt) = dealt {
+        dealt.get(&actor.site_id).copied()
+    } else {
+        markets::primary_supplier(
+            locations,
+            network,
+            preferences,
+            actor.location,
+            actor.site_id,
+            &good,
+        )?
+    };
     let by_product = matches!(
         builder.policy.markets.procurement,
         GameProcurement::ByProduct { .. }

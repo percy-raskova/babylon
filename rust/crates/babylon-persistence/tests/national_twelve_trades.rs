@@ -3346,3 +3346,288 @@ fn shops_customers_follow_their_workers() {
     println!("persons at work at shops under half the ratio: {under} of {all}; over twice: {over}");
     assert!(under * 100 < all * 5, "{under} of {all}");
 }
+
+// ---- Task 7d: a business is dealt its makers of goods and machines ----
+
+/// Each domestic maker's restocking rows of the good `key` as (buyer, cap): for a machine, the buyer of each
+/// investment row, its cap the machines it may buy a period.
+fn rows_at_makers(
+    catalog: &CapturedEconomicCatalog,
+    policy: &NationalGamePolicy,
+    key: &str,
+) -> Vec<(SiteId, SiteId, u64)> {
+    let good = &policy.commodities[key];
+    let opening = catalog.opening();
+    if key == "equipment" {
+        let equipment = productive_equipment(catalog);
+        let site_of: BTreeMap<_, _> = equipment
+            .bindings
+            .iter()
+            .map(|b| (b.process_id, b.site_id))
+            .collect();
+        return equipment
+            .investment_policies
+            .iter()
+            .map(|p| {
+                (
+                    p.supplier_site_id,
+                    site_of[&p.process_id],
+                    p.maximum_purchase_per_period,
+                )
+            })
+            .collect();
+    }
+    opening
+        .policies
+        .replenishment
+        .iter()
+        .filter(|row| (row.good_id, row.unit_id) == (good.good_id, good.unit_id))
+        .map(|row| {
+            (
+                row.supplier_site_id,
+                row.buyer_site_id,
+                row.maximum_purchase,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn every_maker_with_workers_has_a_buyer() {
+    let policy = NationalGamePolicy::parse(fixture_text()).expect("the fixture admits");
+    let catalog = captured();
+    let mut refused = Vec::new();
+    for key in [
+        "food",
+        "materials",
+        "resources",
+        "consumer_goods",
+        "equipment",
+    ] {
+        let makers = providers_of(catalog, &policy, key);
+        let rows = rows_at_makers(catalog, &policy, key);
+        let bought: BTreeSet<SiteId> = rows.iter().map(|(maker, _, _)| *maker).collect();
+        let with = makers.iter().filter(|(s, _, _)| bought.contains(s)).count();
+        let all: u64 = makers.iter().map(|(_, _, persons)| persons).sum();
+        let without: u64 = makers
+            .iter()
+            .filter(|(s, _, _)| !bought.contains(s))
+            .map(|(_, _, persons)| persons)
+            .sum();
+        println!(
+            "{key}: {with} of {} makers have a buyer; {without} of {all} persons at none",
+            makers.len()
+        );
+        if rows.is_empty() {
+            println!("{key}: nothing in the fixture buys it");
+            continue;
+        }
+        if without * 100 >= all * 5 {
+            refused.push(format!("{key}: {without} of {all}"));
+        }
+    }
+    assert!(refused.is_empty(), "{refused:?}");
+}
+
+/// The caps asked of each maker of `key` by every buyer, with its persons at work.
+fn asked_of_makers(
+    catalog: &CapturedEconomicCatalog,
+    policy: &NationalGamePolicy,
+    key: &str,
+    from: impl Fn(SiteId) -> bool,
+) -> Vec<(u64, u64)> {
+    let mut asked = BTreeMap::<SiteId, u64>::new();
+    for (maker, buyer, cap) in rows_at_makers(catalog, policy, key) {
+        if from(buyer) {
+            *asked.entry(maker).or_default() += cap;
+        }
+    }
+    providers_of(catalog, policy, key)
+        .into_iter()
+        .map(|(site, _, persons)| (asked.get(&site).copied().unwrap_or(0), persons))
+        .collect()
+}
+
+#[test]
+fn makers_are_asked_in_proportion() {
+    let policy = NationalGamePolicy::parse(fixture_text()).expect("the fixture admits");
+    let catalog = captured();
+    let mut refused = Vec::new();
+    for key in ["food", "materials", "resources"] {
+        let makers = asked_of_makers(catalog, &policy, key, |_| true);
+        let asked: u128 = makers.iter().map(|(a, _)| u128::from(*a)).sum();
+        let persons: u128 = makers.iter().map(|(_, p)| u128::from(*p)).sum();
+        // A maker is under half the nation's ratio when asked x persons x 2 < its persons x all asked.
+        let under: u128 = makers
+            .iter()
+            .filter(|(a, p)| u128::from(*a) * persons * 2 < u128::from(*p) * asked)
+            .map(|(_, p)| u128::from(*p))
+            .sum();
+        let over: u128 = makers
+            .iter()
+            .filter(|(a, p)| u128::from(*a) * persons > u128::from(*p) * asked * 2)
+            .map(|(_, p)| u128::from(*p))
+            .sum();
+        println!(
+            "{key}: persons at makers under half the ratio {under}, over twice {over}, of {persons}"
+        );
+        if key != "resources" && (under + over) * 10 >= persons {
+            refused.push(format!("{key}: {under} + {over} of {persons}"));
+        }
+    }
+    // Handed over, not asserted: the same two shares for what home buyers alone ask, for each good.
+    let at = site_locations(catalog);
+    let home = |buyer: SiteId| matches!(at[&buyer], EconomicLocation::County(_));
+    for key in ["food", "materials", "resources"] {
+        let makers = asked_of_makers(catalog, &policy, key, home);
+        let asked: u128 = makers.iter().map(|(a, _)| u128::from(*a)).sum();
+        let persons: u128 = makers.iter().map(|(_, p)| u128::from(*p)).sum();
+        let under: u128 = makers
+            .iter()
+            .filter(|(a, p)| u128::from(*a) * persons * 2 < u128::from(*p) * asked)
+            .map(|(_, p)| u128::from(*p))
+            .sum();
+        let over: u128 = makers
+            .iter()
+            .filter(|(a, p)| u128::from(*a) * persons > u128::from(*p) * asked * 2)
+            .map(|(_, p)| u128::from(*p))
+            .sum();
+        println!("{key} (home buyers alone): under half {under}, over twice {over}, of {persons}");
+    }
+    assert!(refused.is_empty(), "{refused:?}");
+}
+
+#[test]
+fn buyers_abroad_are_dealt_over_the_country() {
+    let policy = NationalGamePolicy::parse(fixture_text()).expect("the fixture admits");
+    let catalog = captured();
+    let at = site_locations(catalog);
+    let abroad = |buyer: SiteId| !matches!(at[&buyer], EconomicLocation::County(_));
+    let mut refused = Vec::new();
+    for key in ["food", "materials", "resources", "consumer_goods"] {
+        let rows: Vec<_> = rows_at_makers(catalog, &policy, key)
+            .into_iter()
+            .filter(|(maker, buyer, _)| {
+                abroad(*buyer) && matches!(at[maker], EconomicLocation::County(_))
+            })
+            .collect();
+        let mut per_maker = BTreeMap::<SiteId, u64>::new();
+        let mut per_buyer = BTreeMap::<SiteId, usize>::new();
+        for (maker, buyer, cap) in &rows {
+            *per_maker.entry(*maker).or_default() += cap;
+            *per_buyer.entry(*buyer).or_default() += 1;
+        }
+        let makers = providers_of(catalog, &policy, key);
+        // The dealing's stalls are the makers asked from abroad: the rest reach no buyer abroad by a route.
+        let (outside, outside_persons) = makers
+            .iter()
+            .filter(|(site, _, _)| !per_maker.contains_key(site))
+            .fold((0_usize, 0_u64), |(n, p), (_, _, persons)| {
+                (n + 1, p + persons)
+            });
+        let stalls: Vec<(u64, u64)> = makers
+            .iter()
+            .filter_map(|(site, _, persons)| per_maker.get(site).map(|a| (*a, *persons)))
+            .collect();
+        let total: u128 = stalls.iter().map(|(a, _)| u128::from(*a)).sum();
+        let persons: u128 = stalls.iter().map(|(_, p)| u128::from(*p)).sum();
+        let worst = stalls
+            .iter()
+            .filter(|(a, p)| u128::from(*a) * persons > total * u128::from(*p) * 2)
+            .count();
+        // The largest multiple of its share by people that a maker is asked, in hundredths.
+        let multiple = stalls
+            .iter()
+            .map(|(a, p)| u128::from(*a) * persons * 100 / (total.max(1) * u128::from(*p)))
+            .max()
+            .unwrap_or(0);
+        println!(
+            "{key}: {} buyers abroad, {} rows, widest buyer {} rows, {} home makers asked; \
+             outside the dealing {outside} makers and {outside_persons} persons; makers asked more \
+             than twice their share {worst}; largest multiple {multiple} hundredths",
+            per_buyer.len(),
+            rows.len(),
+            per_buyer.values().max().copied().unwrap_or(0),
+            per_maker.len()
+        );
+        if key == "food" {
+            assert!(per_maker.len() > 1);
+        }
+        if worst > 0 {
+            refused.push(format!("{key}: {worst}"));
+        }
+    }
+    assert!(refused.is_empty(), "{refused:?}");
+}
+
+#[test]
+fn an_installation_need_follows_its_site_s_makers() {
+    let policy = NationalGamePolicy::parse(fixture_text()).expect("the fixture admits");
+    let catalog = captured();
+    let at = site_locations(catalog);
+    let equipment = productive_equipment(catalog);
+    let installing: BTreeSet<SiteId> = equipment
+        .bindings
+        .iter()
+        .filter(|b| {
+            equipment
+                .installation_policies
+                .iter()
+                .any(|p| p.process_id == b.process_id)
+        })
+        .map(|b| b.site_id)
+        .collect();
+    let function_of: BTreeMap<_, _> = catalog
+        .opening()
+        .sites
+        .iter()
+        .map(|s| (s.site_id, s.function))
+        .collect();
+    let mut suppliers = BTreeMap::<SiteId, BTreeSet<SiteId>>::new();
+    for (maker, buyer, _) in rows_at_makers(catalog, &policy, "materials") {
+        if matches!(at[&maker], EconomicLocation::County(_))
+            && matches!(at[&buyer], EconomicLocation::County(_))
+        {
+            suppliers.entry(buyer).or_default().insert(maker);
+        }
+    }
+    let (mut checked, mut sharing, mut many) = (0_u32, 0_u32, 0_u32);
+    for site in installing
+        .iter()
+        .filter(|s| matches!(at[*s], EconomicLocation::County(_)))
+    {
+        let Some(makers) = suppliers.get(site) else {
+            continue;
+        };
+        checked += 1;
+        // One dealing a good: a site's materials for its recipe and for its machines come from the same
+        // makers, three at most.
+        assert!(makers.len() <= 3, "{} makers", makers.len());
+        many += u32::from(makers.len() > 1);
+        if policy.recipes[&function_of[site]]
+            .inputs
+            .contains_key("materials")
+        {
+            sharing += 1;
+        }
+    }
+    println!("{checked} installing sites restock materials; {sharing} of them also use it in their recipe; {many} have more than one maker");
+    assert!(checked > 0 && sharing > 0 && many > 0);
+}
+
+#[test]
+fn the_dealing_of_goods_fits_its_bounds() {
+    let logistics = &captured().opening().logistics;
+    let policies = &captured().opening().policies;
+    let counts = (
+        policies.replenishment.len(),
+        logistics.supplier_routes.len(),
+        logistics.route_stages.len(),
+        logistics.memberships.len(),
+    );
+    let pools = counts.3 * 100 / counts.2;
+    println!("restocking rows, supplier routes, route stages, memberships: {counts:?}; {pools} hundredths of a pool a stage on mean");
+    assert!(counts.0 <= 262_144 && counts.1 <= 262_144);
+    assert!(counts.2 <= 65_536 && counts.3 <= 262_144);
+    assert_eq!(counts, (24_243, 31_892, 7_228, 41_221));
+}

@@ -263,6 +263,63 @@ fn capacities(builder: &Builder<'_>) -> Result<BTreeMap<CorridorId, u64>> {
     Ok(capacities)
 }
 
+/// What a stage over a path is: its travel periods, loss and shared pools.
+struct Profile {
+    periods: u16,
+    loss: u32,
+    pools: BTreeSet<CorridorId>,
+}
+
+/// The profile of the path from `from` to `to` for this cargo: `None` where there is no path, or where the links
+/// have a travel time of 0 or no pool, so that no stage can be built. The test `add_stage` makes.
+fn profile(
+    builder: &Builder<'_>,
+    network: &mut Network<'_>,
+    from: EconomicLocation,
+    to: EconomicLocation,
+    cargo: CargoClass,
+) -> Result<Option<Profile>> {
+    let Some(path) = network.path(from, to, cargo)? else {
+        return Ok(None);
+    };
+    let mut periods = 0_u16;
+    let mut loss = 0_u32;
+    let mut pools = BTreeSet::new();
+    for index in path {
+        let link = &builder.transport.links()[index];
+        let service = builder
+            .transport
+            .services()
+            .get(link.profile())
+            .ok_or(NationalOpeningError::Route)?;
+        periods = periods.max(service.travel_periods);
+        loss = loss.max(service.loss_ppm);
+        pools.extend(link.pools().iter().map(|p| corridor(p)));
+    }
+    Ok((periods > 0 && !pools.is_empty()).then_some(Profile {
+        periods,
+        loss,
+        pools,
+    }))
+}
+
+/// Whether `add_stage` would build a route from `from` to `to` for this cargo: a location is its own route.
+pub(super) fn buildable(
+    builder: &Builder<'_>,
+    network: &mut Network<'_>,
+    from: EconomicLocation,
+    to: EconomicLocation,
+    cargo: CargoClass,
+) -> Result<bool> {
+    if from == to {
+        return Ok(true);
+    }
+    if !builder.logistics_nodes.contains_key(&from) || !builder.logistics_nodes.contains_key(&to) {
+        return Ok(false);
+    }
+    Ok(profile(builder, network, from, to, cargo)?.is_some())
+}
+
 fn add_stage(
     builder: &mut Builder<'_>,
     network: &mut Network<'_>,
@@ -271,26 +328,11 @@ fn add_stage(
     cargo: CargoClass,
     id: RouteId,
 ) -> Result<()> {
-    let path = network
-        .path(from, to, cargo)?
-        .ok_or(NationalOpeningError::Route)?;
-    let mut periods = 0_u16;
-    let mut loss = 0_u32;
-    let mut pools = BTreeSet::new();
-    for index in path {
-        let link = &builder.transport.links()[index];
-        let profile = builder
-            .transport
-            .services()
-            .get(link.profile())
-            .ok_or(NationalOpeningError::Route)?;
-        periods = periods.max(profile.travel_periods);
-        loss = loss.max(profile.loss_ppm);
-        pools.extend(link.pools().iter().map(|p| corridor(p)));
-    }
-    if periods == 0 || pools.is_empty() {
-        return Err(NationalOpeningError::Route);
-    }
+    let Profile {
+        periods,
+        loss,
+        pools,
+    } = profile(builder, network, from, to, cargo)?.ok_or(NationalOpeningError::Route)?;
     let from_node = *builder
         .logistics_nodes
         .get(&from)

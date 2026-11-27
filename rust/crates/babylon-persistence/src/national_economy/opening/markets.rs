@@ -1,5 +1,5 @@
 //! Finite supplier preferences, recurring household purchases and funded offers.
-use super::dealing::{self, Dealt};
+use super::dealing::{self, Dealt, Need};
 use super::routes::Network;
 use super::{actors, templates, ActorContext, Builder, NationalOpeningError, Result};
 use crate::national_economy::grain::FinancialDomainId;
@@ -8,7 +8,7 @@ use crate::economic_catalog::{EconomicHouseholdSeed, MerchantSeed, ResidentStaff
 use crate::national_transport::CargoClass;
 
 use babylon_kernel::currency::Currency;
-use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::economic_identity::{EconomicFunction, TradeSet};
 use babylon_kernel::economic_location::EconomicLocation;
 
 use crate::national_economy::{GameCommodity, GameHandling, GameProcurement, NationalGamePolicy};
@@ -27,6 +27,8 @@ use std::collections::BTreeMap;
 pub(super) struct Preferences {
     services: BTreeMap<(EconomicLocation, GoodId, UnitId), Option<SiteId>>,
     domestic: BTreeMap<(EconomicLocation, GoodId, UnitId, Option<SiteId>), Option<SiteId>>,
+    /// The needs of stored goods waiting to be dealt their makers (schema 8).
+    pub(super) needs: Vec<Need>,
 }
 
 pub(super) type Providers = BTreeMap<(GoodId, UnitId), ProviderLocations>;
@@ -176,6 +178,7 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
     )?;
     producers(builder, &providers, &mut network, &mut preferences, &dealt)?;
     super::equipment::wire(builder, &providers, &mut network, &mut preferences)?;
+    dealing::deal_goods(builder, &providers, &mut network, &mut preferences)?;
     let policies = &mut builder.opening.policies;
     policies
         .offers
@@ -982,6 +985,15 @@ pub(super) fn procure(
         .get(&buyer)
         .ok_or(NationalOpeningError::Identity)?;
     let location = actor.location;
+    if builder.policy.trades == TradeSet::Twelve {
+        preferences.needs.push(Need {
+            buyer,
+            key: key.to_owned(),
+            required,
+            buffer_periods,
+        });
+        return Ok(());
+    }
     let good = builder.commodity(key)?.clone();
     let cargo = good.cargo.ok_or(NationalOpeningError::Policy)?;
     let Some(locations) = providers.get(&(good.good_id, good.unit_id)) else {

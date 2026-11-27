@@ -3,16 +3,16 @@
 //! The engine holds one provider a buyer and service, so the compiler decides who is given to whom. The
 //! dealing reads no price and no want amount, and of a recipe only whether a trade buys the service at all.
 use super::markets::{self, Preferences, ProviderLocations, Providers};
-use super::routes::Network;
+use super::routes::{self, Network};
 use super::{ActorContext, Builder, NationalOpeningError, Result};
-use crate::national_economy::NationalGamePolicy;
+use crate::national_economy::{GameCommodity, NationalGamePolicy};
 use crate::national_transport::CargoClass;
 
 use crate::economic_catalog::EconomicOpening;
 use babylon_kernel::economic_identity::{EconomicFunction, TradeSet};
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
-    AccountId, CommodityKind, FinalDemandPrincipalId, GoodId, SiteId, UnitId,
+    AccountId, CommodityKind, FinalDemandPrincipalId, GoodId, ReplenishmentPolicy, SiteId, UnitId,
 };
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BTreeMap, BTreeSet};
@@ -299,6 +299,168 @@ pub(super) fn deal_by_most_room(
         map.insert(buyer.buyer, shares);
     }
     Ok(map)
+}
+
+/// Gives, among the locations offered, the nearest to a buyer's location: the network's own nearness.
+type Nearest<'a> = dyn FnMut(EconomicLocation, &BTreeSet<EconomicLocation>) -> Result<Option<EconomicLocation>>
+    + 'a;
+
+/// One buyer's turn at the makers: what it still needs, and the makers it has used and the shares it holds.
+struct Turn {
+    remaining: i128,
+    used: Vec<bool>,
+    shares: Vec<Share>,
+}
+
+/// The makers a buyer may still take from, by location, each location's makers by site id: those not used by
+/// this buyer and not the buyer itself.
+fn open_locations(
+    stalls: &[Stall],
+    by_location: &BTreeMap<EconomicLocation, Vec<usize>>,
+    turn: &Turn,
+    buyer: AccountId,
+) -> BTreeMap<EconomicLocation, Vec<usize>> {
+    by_location
+        .iter()
+        .filter_map(|(location, indices)| {
+            let open: Vec<usize> = indices
+                .iter()
+                .copied()
+                .filter(|&index| !turn.used[index] && AccountId::Site(stalls[index].site) != buyer)
+                .collect();
+            (!open.is_empty()).then_some((*location, open))
+        })
+        .collect()
+}
+
+/// The maker a buyer takes from next: the nearest location that has room left, else the nearest location that
+/// has any maker left; inside it the first maker by site id with room, else the first.
+fn pick(
+    open: &BTreeMap<EconomicLocation, Vec<usize>>,
+    room: &dyn Fn(usize) -> Result<i128>,
+    buyer_at: EconomicLocation,
+    nearest: &mut Nearest<'_>,
+) -> Result<Option<(usize, i128)>> {
+    let mut with_room = BTreeSet::new();
+    for (location, indices) in open {
+        for &index in indices {
+            if room(index)? > 0 {
+                with_room.insert(*location);
+                break;
+            }
+        }
+    }
+    let mut found = if with_room.is_empty() {
+        None
+    } else {
+        nearest(buyer_at, &with_room)?
+    };
+    if found.is_none() {
+        let every: BTreeSet<_> = open.keys().copied().collect();
+        if !every.is_empty() {
+            found = nearest(buyer_at, &every)?;
+        }
+    }
+    let Some(location) = found else {
+        return Ok(None);
+    };
+    let indices = open.get(&location).ok_or(NationalOpeningError::Route)?;
+    for &index in indices {
+        let left = room(index)?;
+        if left > 0 {
+            return Ok(Some((index, left)));
+        }
+    }
+    let index = *indices.first().ok_or(NationalOpeningError::Route)?;
+    Ok(Some((index, room(index)?)))
+}
+
+/// Deals buyers' weights over makers by nearness and room. A maker's room is its persons at work over all
+/// makers' times the buyers' whole weight, kept exact as `employed x whole weight` against `weight x all
+/// makers' employed`. Buyers in order of weight, largest first, then by account; each takes room from the
+/// makers of the nearest location (`nearest` gives it, among the locations offered) that has room left, inside
+/// a location the makers by site id, then the next nearest, up to `most` makers; the last takes whatever is
+/// left, past its room if it must. A buyer is never dealt itself. A buyer that `nearest` gives no location
+/// gets no entry. A maker with nobody at work is `Policy`; no maker gives an empty map.
+pub(super) fn deal_by_room(
+    custom: &[Custom],
+    stalls: &[Stall],
+    most: usize,
+    nearest: &mut Nearest<'_>,
+) -> Result<BTreeMap<AccountId, Vec<Share>>> {
+    if stalls.iter().any(|stall| stall.employed == 0) {
+        return Err(NationalOpeningError::Policy);
+    }
+    let mut map = BTreeMap::new();
+    if stalls.is_empty() {
+        return Ok(map);
+    }
+    let mut by_location = BTreeMap::<EconomicLocation, Vec<usize>>::new();
+    for (index, stall) in stalls.iter().enumerate() {
+        by_location.entry(stall.location).or_default().push(index);
+    }
+    for indices in by_location.values_mut() {
+        indices.sort_unstable_by_key(|&index| stalls[index].site);
+    }
+    let all: i128 = stalls.iter().map(|stall| i128::from(stall.employed)).sum();
+    let weight = as_signed(custom.iter().map(|c| u128::from(c.weight)).sum())?;
+    let mut taken = vec![0_i128; stalls.len()];
+    let mut buyers = custom.to_vec();
+    buyers.sort_unstable_by_key(|c| (Reverse(c.weight), c.buyer));
+    for buyer in buyers.into_iter().filter(|c| c.weight > 0) {
+        let mut turn = Turn {
+            remaining: i128::from(buyer.weight),
+            used: vec![false; stalls.len()],
+            shares: Vec::new(),
+        };
+        while turn.remaining > 0 && turn.shares.len() < most.max(1) {
+            let open = open_locations(stalls, &by_location, &turn, buyer.buyer);
+            let room = |index: usize| room_of(&stalls[index], taken[index], weight, all);
+            let Some((index, left)) = pick(&open, &room, buyer.location, nearest)? else {
+                break;
+            };
+            let last = turn.shares.len() + 1 >= most.max(1);
+            let part = if last || left <= 0 {
+                turn.remaining
+            } else {
+                turn.remaining.min((left + all - 1) / all)
+            };
+            turn.used[index] = true;
+            taken[index] += part;
+            turn.remaining -= part;
+            turn.shares.push(Share {
+                maker: stalls[index].site,
+                part: u128::try_from(part).map_err(|_| NationalOpeningError::Arithmetic)?,
+                whole: u128::from(buyer.weight),
+            });
+        }
+        if turn.remaining > 0 {
+            if let Some(share) = turn.shares.last_mut() {
+                let more =
+                    u128::try_from(turn.remaining).map_err(|_| NationalOpeningError::Arithmetic)?;
+                share.part += more;
+                if let Some(index) = stalls.iter().position(|stall| stall.site == share.maker) {
+                    taken[index] += turn.remaining;
+                }
+            }
+        }
+        if !turn.shares.is_empty() {
+            map.insert(buyer.buyer, turn.shares);
+        }
+    }
+    Ok(map)
+}
+
+/// Whether `routes::add_stage` would build a route from `from` to `to` for this cargo: a path exists, and its
+/// links have a travel time above 0 and a pool. The same test `add_stage` makes; a location is its own route.
+pub(super) fn routable(
+    builder: &Builder<'_>,
+    network: &mut Network<'_>,
+    from: EconomicLocation,
+    to: EconomicLocation,
+    cargo: CargoClass,
+) -> Result<bool> {
+    routes::buildable(builder, network, from, to, cargo)
 }
 
 /// A cap dealt over shares by largest remainder (equal remainders to the lower site id), so that the parts
@@ -737,6 +899,296 @@ pub(super) fn deal_services(
     Ok(dealt)
 }
 
+/// One buyer's need of a stored good, kept until every need of the good is known and the good's makers are
+/// dealt together (schema 8).
+#[derive(Debug, Clone)]
+pub(super) struct Need {
+    pub buyer: SiteId,
+    pub key: String,
+    pub required: u64,
+    pub buffer_periods: u64,
+}
+
+/// The domestic makers of a good as stalls: every county site with persons at work.
+pub(super) fn domestic_makers(
+    builder: &Builder<'_>,
+    locations: &ProviderLocations,
+) -> Result<Vec<Stall>> {
+    let sites: Vec<SiteId> = locations
+        .locations()
+        .filter(|&(location, _)| state(location).is_some())
+        .flat_map(|(_, sites)| sites.iter().copied())
+        .collect();
+    stalls(builder, &sites)
+}
+
+/// `deal_by_room`, with nearness the network's own among the locations from which a route can be built to the
+/// buyer (decision 5): the nearest offered location, and where its route cannot be built the next.
+pub(super) fn deal_makers(
+    builder: &Builder<'_>,
+    network: &mut Network<'_>,
+    cargo: CargoClass,
+    custom: &[Custom],
+    stalls: &[Stall],
+    most: usize,
+) -> Result<BTreeMap<AccountId, Vec<Share>>> {
+    let mut memo = BTreeMap::<(EconomicLocation, EconomicLocation), bool>::new();
+    let mut nearest = |at: EconomicLocation, offered: &BTreeSet<EconomicLocation>| {
+        let mut left = offered.clone();
+        loop {
+            let Some(found) = network.nearest(at, cargo, left.iter().copied())? else {
+                return Ok(None);
+            };
+            let ok = if let Some(known) = memo.get(&(found, at)) {
+                *known
+            } else {
+                let known = routable(builder, network, found, at, cargo)?;
+                memo.insert((found, at), known);
+                known
+            };
+            if ok {
+                return Ok(Some(found));
+            }
+            left.remove(&found);
+        }
+    };
+    deal_by_room(custom, stalls, most, &mut nearest)
+}
+
+/// The most makers a buyer at home is dealt. A buyer abroad (a whole region's trade) has no limit of makers: it
+/// takes room from the nearest maker, then the next, until its cap is dealt.
+const MOST_AT_HOME: usize = 3;
+
+/// The makers that are stalls of the dealing of the buyers abroad: those from whose location a route can be
+/// built to at least one buyer abroad. A maker that reaches none holds room nobody could take.
+fn reachable_makers(
+    builder: &Builder<'_>,
+    network: &mut Network<'_>,
+    cargo: CargoClass,
+    makers: &[Stall],
+    buyers: &[Custom],
+) -> Result<Vec<Stall>> {
+    let targets: BTreeSet<EconomicLocation> = buyers.iter().map(|c| c.location).collect();
+    let mut memo = BTreeMap::<EconomicLocation, bool>::new();
+    let mut stalls = Vec::new();
+    for maker in makers {
+        let reaches = if let Some(known) = memo.get(&maker.location) {
+            *known
+        } else {
+            let mut found = false;
+            for &to in &targets {
+                if routable(builder, network, maker.location, to, cargo)? {
+                    found = true;
+                    break;
+                }
+            }
+            memo.insert(maker.location, found);
+            found
+        };
+        if reaches {
+            stalls.push(*maker);
+        }
+    }
+    Ok(stalls)
+}
+
+/// A buyer's total weight over all its needs, by buyer.
+pub(super) fn customs(
+    builder: &Builder<'_>,
+    weights: impl Iterator<Item = (SiteId, u64)>,
+) -> Result<Vec<Custom>> {
+    let mut totals = BTreeMap::<SiteId, u64>::new();
+    for (buyer, weight) in weights {
+        let total = totals.entry(buyer).or_default();
+        *total = total
+            .checked_add(weight)
+            .ok_or(NationalOpeningError::Arithmetic)?;
+    }
+    totals
+        .into_iter()
+        .map(|(buyer, weight)| {
+            Ok(Custom {
+                buyer: AccountId::Site(buyer),
+                location: builder
+                    .actors
+                    .get(&buyer)
+                    .ok_or(NationalOpeningError::Identity)?
+                    .location,
+                weight,
+            })
+        })
+        .collect()
+}
+
+/// The restocking rows of one need over the makers its buyer was dealt: `cap` over the shares.
+fn restock_rows(
+    builder: &mut Builder<'_>,
+    need: &Need,
+    good: &GameCommodity,
+    cap: u64,
+    shares: Option<&Vec<Share>>,
+) -> Result<()> {
+    let Some(shares) = shares else {
+        return Ok(());
+    };
+    let target = super::quantity(need.required, need.buffer_periods)?;
+    let floor = markets::payroll(builder, need.buyer)?;
+    for (maker, part) in caps(cap, shares)? {
+        builder.add_procurement(ReplenishmentPolicy {
+            buyer_site_id: need.buyer,
+            supplier_site_id: maker,
+            good_id: good.good_id,
+            unit_id: good.unit_id,
+            target_stock: target,
+            maximum_purchase: part,
+            cash_floor: floor,
+        })?;
+    }
+    Ok(())
+}
+
+/// What a need asks from home and from abroad.
+struct Split {
+    need: Need,
+    /// A buyer at home: the units from its makers at home; a buyer abroad: the units from its own region.
+    home: u64,
+    /// A buyer at home: the units from abroad (written at once); a buyer abroad: the units from the country.
+    country: u64,
+    /// A buyer abroad: its own region's maker.
+    own: Option<SiteId>,
+}
+
+/// Splits a need as `markets::procure` does: a home buyer takes its import share from the region its
+/// rotation gives and the rest from home; a buyer abroad takes its export share from the country and the rest
+/// from its own region.
+fn split(
+    builder: &mut Builder<'_>,
+    providers: &ProviderLocations,
+    network: &mut Network<'_>,
+    preferences: &mut Preferences,
+    good: &GameCommodity,
+    need: Need,
+) -> Result<Split> {
+    let location = builder
+        .actors
+        .get(&need.buyer)
+        .ok_or(NationalOpeningError::Identity)?
+        .location;
+    let cargo = good.cargo.ok_or(NationalOpeningError::Policy)?;
+    let part = |builder: &Builder<'_>| -> Result<u64> {
+        let share = markets::foreign_share_bps(builder.policy, location, &need.key)?;
+        u64::try_from(u128::from(need.required) * u128::from(share) / 10_000)
+            .map_err(|_| NationalOpeningError::Arithmetic)
+    };
+    if state(location).is_some() {
+        let secondary =
+            markets::secondary_supplier(builder, providers, network, need.buyer, cargo)?;
+        let abroad = if secondary.is_some() {
+            part(builder)?
+        } else {
+            0
+        };
+        if let Some(supplier) = secondary.filter(|_| abroad > 0) {
+            builder.add_procurement(ReplenishmentPolicy {
+                buyer_site_id: need.buyer,
+                supplier_site_id: supplier,
+                good_id: good.good_id,
+                unit_id: good.unit_id,
+                target_stock: super::quantity(need.required, need.buffer_periods)?,
+                maximum_purchase: abroad,
+                cash_floor: markets::payroll(builder, need.buyer)?,
+            })?;
+        }
+        return Ok(Split {
+            home: need.required - abroad,
+            country: abroad,
+            own: None,
+            need,
+        });
+    }
+    let own =
+        markets::primary_supplier(providers, network, preferences, location, need.buyer, good)?;
+    Ok(Split {
+        home: need.required,
+        country: part(builder)?,
+        own,
+        need,
+    })
+}
+
+/// Deals the stored goods that the compiler has gathered the needs of (`markets::procure` under the twelve
+/// trades): one dealing for each good, the home buyers of it together and the buyers abroad together, each
+/// against the makers' people afresh. A home buyer's weight is its home cap summed over everything it buys the
+/// good for, a buyer abroad's its cap from the country. The rows are each need's cap dealt over the buyer's
+/// shares by `caps`; each keeps its need's target stock and the buyer's cash floor.
+pub(super) fn deal_goods(
+    builder: &mut Builder<'_>,
+    providers: &Providers,
+    network: &mut Network<'_>,
+    preferences: &mut Preferences,
+) -> Result<()> {
+    let mut by_key = BTreeMap::<String, Vec<Need>>::new();
+    for need in std::mem::take(&mut preferences.needs) {
+        by_key.entry(need.key.clone()).or_default().push(need);
+    }
+    for (key, needs) in by_key {
+        let good = builder.commodity(&key)?.clone();
+        let cargo = good.cargo.ok_or(NationalOpeningError::Policy)?;
+        let Some(locations) = providers.get(&(good.good_id, good.unit_id)) else {
+            continue;
+        };
+        let mut home = Vec::new();
+        let mut abroad = Vec::new();
+        for need in needs {
+            let split = split(builder, locations, network, preferences, &good, need)?;
+            if state(builder.actors[&split.need.buyer].location).is_none() {
+                abroad.push(split);
+            } else {
+                home.push(split);
+            }
+        }
+        let makers = domestic_makers(builder, locations)?;
+        let at_home = customs(builder, home.iter().map(|row| (row.need.buyer, row.home)))?;
+        let dealt = deal_makers(builder, network, cargo, &at_home, &makers, MOST_AT_HOME)?;
+        for row in &home {
+            restock_rows(
+                builder,
+                &row.need,
+                &good,
+                row.home,
+                dealt.get(&AccountId::Site(row.need.buyer)),
+            )?;
+        }
+        let beyond = customs(
+            builder,
+            abroad.iter().map(|row| (row.need.buyer, row.country)),
+        )?;
+        let reached = reachable_makers(builder, network, cargo, &makers, &beyond)?;
+        let dealt = deal_makers(builder, network, cargo, &beyond, &reached, reached.len())?;
+        for row in &abroad {
+            let shares = dealt.get(&AccountId::Site(row.need.buyer));
+            restock_rows(builder, &row.need, &good, row.country, shares)?;
+            let own_cap = if shares.is_some() {
+                row.home - row.country.min(row.home)
+            } else {
+                row.home
+            };
+            if let Some(supplier) = row.own.filter(|_| own_cap > 0) {
+                builder.add_procurement(ReplenishmentPolicy {
+                    buyer_site_id: row.need.buyer,
+                    supplier_site_id: supplier,
+                    good_id: good.good_id,
+                    unit_id: good.unit_id,
+                    target_stock: super::quantity(row.need.required, row.need.buffer_periods)?,
+                    maximum_purchase: own_cap,
+                    cash_floor: markets::payroll(builder, row.need.buyer)?,
+                })?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// What each buyer abroad (or in a dependency) of a crossing service takes from the domestic providers, by
 /// good, unit and buyer: the rows of its export part.
 pub(super) type Exports = BTreeMap<(GoodId, UnitId, SiteId), Vec<(SiteId, u64)>>;
@@ -1154,6 +1606,50 @@ mod tests {
             Err(NationalOpeningError::Policy)
         );
         assert_eq!(deal_by_most_room(&buyers, &[], 3), Ok(BTreeMap::new()));
+    }
+
+    fn walk(
+        near: &'static [(&'static str, u16)],
+    ) -> impl FnMut(EconomicLocation, &BTreeSet<EconomicLocation>) -> Result<Option<EconomicLocation>>
+    {
+        move |_, offered| {
+            Ok(offered
+                .iter()
+                .filter_map(|&location| {
+                    near.iter()
+                        .find(|(code, _)| county(code) == location)
+                        .map(|(_, hops)| (*hops, location))
+                })
+                .min()
+                .map(|(_, location)| location))
+        }
+    }
+
+    #[test]
+    fn buyers_take_the_nearest_room() {
+        let stalls = [stall(1, "26163", 40), stall(2, "26125", 60)];
+        let buyers = [custom(10, "26163", 50), custom(11, "26163", 50)];
+        let mut nearest = walk(&[("26163", 0), ("26125", 3)]);
+        let map = deal_by_room(&buyers, &stalls, 3, &mut nearest).expect("deals");
+        assert_eq!(map[&account(10)], vec![share(1, 40, 50), share(2, 10, 50)]);
+        assert_eq!(map[&account(11)], vec![share(2, 50, 50)]);
+        // With one maker at most each takes one maker, the first the near one.
+        let map = deal_by_room(&buyers, &stalls, 1, &mut nearest).expect("deals");
+        assert_eq!(map[&account(10)], vec![share(1, 50, 50)]);
+        assert_eq!(map[&account(11)], vec![share(2, 50, 50)]);
+        // A buyer that no location is offered for gets no share; a maker is never dealt itself.
+        let mut none = |_: EconomicLocation, _: &BTreeSet<EconomicLocation>| Ok(None);
+        assert_eq!(
+            deal_by_room(&buyers, &stalls, 3, &mut none),
+            Ok(BTreeMap::new())
+        );
+        let itself = [custom(1, "26163", 20), custom(10, "26163", 20)];
+        let map = deal_by_room(&itself, &stalls, 3, &mut nearest).expect("deals");
+        assert!(map[&account(1)].iter().all(|s| s.maker != site(1)));
+        assert_eq!(
+            deal_by_room(&buyers, &[stall(1, "26163", 0)], 3, &mut nearest),
+            Err(NationalOpeningError::Policy)
+        );
     }
 
     fn actor_at(id: u8, location: EconomicLocation, employed: u64) -> (SiteId, ActorContext) {

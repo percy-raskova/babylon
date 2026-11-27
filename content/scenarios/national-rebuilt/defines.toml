@@ -1,0 +1,1250 @@
+# THE REBUILT NATIONAL OPENING. Schema 8: twelve trades, observed wages, three earning accounts in
+# every place. It is written by tools/make_national_opening_numbers.py from the accounts table, the pay
+# table and the census of the twelve-trade opening, and is counted on the country bench. It is not yet
+# played by the game's own turn: the shipped scenario is content/scenarios/national/defines.toml.
+# Every price is millionths of one common currency unit; no exchange rates.
+# A marker line stands where the builder writes the numbers it computes; a fact line or a cargo
+# line states what the builder reads of the template and is dropped.
+schema_version = 8
+evidence_class = "Designed"
+period_days = 28
+work_hours_per_person = 160
+opening_pantry_periods = 1
+opening_input_periods = 2
+working_capital_periods = 2
+retailer_buffer_periods = 2
+resource_reserve_output_periods = 1040
+missing_peer_weight_per_establishment = 1 # Designed allocation points, never observed jobs.
+household_enterprise_function = "household_services"
+
+[households]
+# Designed exposure within each historical earnings margin; not observed wealth/class.
+private_owner_households_bps = 1000
+# The next 40% by earnings, the better-paid earning account (rule O17).
+next_forty_households_bps = 4000
+
+[markets]
+# A domestic buyer's share bought abroad, by product, and the services that cross a border.
+import_bps = { business_services = 347, consumer_goods = 4277, equipment = 4104, food = 1102, materials = 2242, resources = 2294 }
+crossing_services = ["business_services"]
+country_services = ["business_services", "leisure", "utility"]
+# Services a buyer takes only in its own place.
+place_services = ["household_services", "housing", "public_provision"]
+journey_timing = "slowest_profile" # Administrative hops do not add 28-day delays.
+service_reach = "same_state_or_own_counterpart"
+# The order of paying (ADR312): what a household buys first, and what last.
+paying_order = ["food", "materials", "consumer_goods", "utility", "housing", "business_services", "household_services", "leisure", "resources"]
+
+[financial]
+operating_income_tax_bps = 2256
+private_distribution_bps = 10000
+reserve_food_support_periods = 1
+wage_tax_bps = 2256
+cross_border_ownership_bps = 2000
+
+# The country's fund: a share of each tax, place by place where the table below names it (O12, O13).
+[fund]
+evidence_class = "Designed"
+operating_income_tax_share_bps = 2878
+reserve_periods = 2
+wage_tax_share_bps = 2878
+share_by_part = { "01073/above" = 5017, "01073/below" = 4572, "01089/above" = 317, "01089/below" = 1495, "01097/above" = 7013, "01097/below" = 1097, "02013/at" = 0, "02016/at" = 0, "02020/at" = 0, "02050/at" = 0, "02060/at" = 0, "02063/at" = 0, "02066/at" = 0, "02068/at" = 2438, "02070/at" = 0, "02090/at" = 0, "02100/at" = 0, "02105/at" = 0, "02110/at" = 0, "02122/at" = 0, "02130/at" = 0, "02150/at" = 0, "02158/at" = 0, "02164/at" = 0, "02170/at" = 0, "02180/at" = 0, "02185/at" = 0, "02188/at" = 0, "02195/at" = 0, "02198/at" = 0, "02220/at" = 0, "02230/at" = 0, "02240/at" = 0, "02275/at" = 0, "02282/at" = 0, "02290/at" = 0, "04013/above" = 0, "04013/below" = 2876, "04019/above" = 0, "04019/below" = 0, "04025/above" = 0, "04025/below" = 0, "05119/above" = 3728, "05119/below" = 5115, "06019/above" = 0, "06019/below" = 0, "06029/above" = 0, "06029/below" = 0, "06037/at" = 5772, "06059/at" = 6315, "06065/above" = 2171, "06065/below" = 1410, "06067/above" = 0, "06067/below" = 0, "06073/at" = 4060, "06075/at" = 7533, "06085/above" = 2598, "06085/below" = 7593, "08031/above" = 4853, "08031/below" = 2457, "08041/above" = 2696, "08041/below" = 199, "09110/above" = 5618, "09110/below" = 6842, "09180/above" = 5130, "09180/below" = 4662, "09190/above" = 6376, "09190/below" = 8695, "10003/above" = 0, "10003/below" = 9157, "10005/at" = 6803, "11001/at" = 0, "12011/at" = 3511, "12031/above" = 3820, "12031/below" = 1469, "12057/above" = 2527, "12057/below" = 4772, "12071/above" = 0, "12071/below" = 1475, "12086/above" = 4319, "12086/below" = 3602, "12095/above" = 4966, "12095/below" = 3160, "13051/above" = 1450, "13051/below" = 110, "13121/at" = 4940, "13135/above" = 2162, "13135/below" = 5714, "13245/above" = 0, "13245/below" = 0, "15001/at" = 0, "15003/at" = 0, "15005/at" = 0, "15007/at" = 0, "15009/at" = 0, "16001/above" = 0, "16001/below" = 792, "17031" = 4253, "17043/above" = 8033, "17043/below" = 5226, "17119/above" = 0, "17119/below" = 3293, "17201/above" = 0, "17201/below" = 814, "18003/above" = 6005, "18003/below" = 3144, "18089/above" = 5182, "18089/below" = 3018, "18097/above" = 4899, "18097/below" = 3638, "18141/above" = 4797, "18141/below" = 3683, "19153/above" = 4413, "19153/below" = 5928, "20091/above" = 2875, "20091/below" = 3863, "20173/above" = 4540, "20173/below" = 1362, "20177/above" = 0, "20177/below" = 0, "21067/above" = 0, "21067/below" = 1569, "21111/above" = 337, "21111/below" = 1826, "21117/above" = 4019, "21117/below" = 0, "22019/above" = 0, "22019/below" = 1657, "22033/above" = 0, "22033/below" = 4057, "22051/above" = 2007, "22051/below" = 0, "22055/above" = 1772, "22055/below" = 1565, "23005/above" = 1739, "23005/below" = 6188, "24005/above" = 0, "24005/below" = 0, "24031/above" = 0, "24031/below" = 0, "24043/above" = 0, "24043/below" = 0, "25007/at" = 3546, "25013/above" = 3944, "25013/below" = 2943, "25017/above" = 5415, "25017/below" = 7046, "25019/at" = 0, "25025/at" = 4231, "26065/above" = 1275, "26065/below" = 766, "26081/above" = 4749, "26081/below" = 5262, "26125/above" = 3051, "26125/below" = 5033, "26163" = 3938, "27053/above" = 5430, "27053/below" = 4567, "27137/above" = 771, "27137/below" = 4212, "28049/above" = 617, "28049/below" = 2421, "29077/above" = 1092, "29077/below" = 3416, "29095/above" = 3831, "29095/below" = 2967, "29189/above" = 6843, "29189/below" = 6938, "30111/above" = 0, "30111/below" = 0, "31055/above" = 7638, "31055/below" = 124, "31109/above" = 0, "31109/below" = 1554, "32003/above" = 1240, "32003/below" = 3945, "32031/above" = 0, "32031/below" = 2985, "33009/above" = 0, "33009/below" = 5896, "33011/above" = 3966, "33011/below" = 4723, "34003/above" = 6091, "34003/below" = 4616, "34007/above" = 3166, "34007/below" = 2121, "34013/at" = 4903, "35001/above" = 0, "35001/below" = 0, "36001/above" = 0, "36001/below" = 2325, "36005/above" = 2714, "36005/below" = 888, "36029/above" = 0, "36029/below" = 997, "36047/above" = 860, "36047/below" = 1851, "36055/above" = 2955, "36055/below" = 3076, "36061/at" = 6197, "36067/above" = 0, "36067/below" = 0, "36081/at" = 0, "36119/above" = 3144, "36119/below" = 0, "37051/above" = 0, "37051/below" = 0, "37081/above" = 3602, "37081/below" = 4098, "37119/above" = 3666, "37119/below" = 7271, "37183/above" = 0, "37183/below" = 2855, "38017/above" = 4965, "38017/below" = 1624, "39035/above" = 5420, "39035/below" = 4643, "39049/above" = 4551, "39049/below" = 3231, "39061/above" = 7595, "39061/below" = 5181, "39095/above" = 4434, "39095/below" = 4628, "39113/above" = 3610, "39113/below" = 0, "40031/above" = 0, "40031/below" = 0, "40109/above" = 0, "40109/below" = 0, "40143/above" = 2584, "40143/below" = 603, "41039/above" = 3572, "41039/below" = 3654, "41051/above" = 1370, "41051/below" = 5453, "42003/above" = 5637, "42003/below" = 5975, "42071/above" = 3856, "42071/below" = 2644, "42077/above" = 6595, "42077/below" = 7865, "42101/above" = 3795, "42101/below" = 7456, "44007/above" = 2476, "44007/below" = 2719, "45019/above" = 0, "45019/below" = 36, "45045/above" = 3206, "45045/below" = 5134, "45079/above" = 0, "45079/below" = 993, "46099/above" = 223, "46099/below" = 1132, "47037/above" = 2977, "47037/below" = 5101, "47065/above" = 2145, "47065/below" = 3088, "47093/above" = 4453, "47093/below" = 3693, "47157/above" = 3536, "47157/below" = 1438, "48029/above" = 1400, "48029/below" = 2910, "48085/above" = 7059, "48085/below" = 3511, "48113/at" = 5076, "48141/above" = 0, "48141/below" = 0, "48157/above" = 5407, "48157/below" = 6572, "48201/at" = 7340, "48215/above" = 102, "48215/below" = 1983, "48245/above" = 3617, "48245/below" = 8244, "48355/above" = 1245, "48355/below" = 5996, "48439/above" = 4335, "48439/below" = 4163, "48453/above" = 457, "48453/below" = 3476, "48479/at" = 0, "49035/above" = 6049, "49035/below" = 0, "49053/above" = 0, "49053/below" = 2736, "50007/above" = 5739, "50007/below" = 2306, "51003/above" = 1864, "51003/below" = 1906, "51013/above" = 0, "51013/below" = 0, "51041/above" = 0, "51041/below" = 598, "51059/above" = 0, "51059/below" = 0, "51810/above" = 0, "51810/below" = 0, "53011/above" = 0, "53011/below" = 982, "53033/at" = 7985, "53053/at" = 0, "53055/at" = 4848, "53061/above" = 0, "53061/below" = 2614, "53063/above" = 0, "53063/below" = 0, "53073/at" = 1764, "54039/above" = 0, "54039/below" = 1445, "55025/above" = 2358, "55025/below" = 1836, "55079/above" = 3598, "55079/below" = 4615, "56021/above" = 0, "56021/below" = 0 }
+
+[[programs]]
+half_periods = 13
+key = "laid_off"
+kind = "after_layoff"
+rank = 0
+recipients = "earning_or_residence_at_opening"
+wage_share_bps = 5000
+
+[[programs]]
+key = "no_earner"
+kind = "own_needs"
+rank = 0
+recipients = "no_earner_at_opening"
+share_bps = 10000
+
+[[programs]]
+key = "residence"
+kind = "own_needs"
+rank = 0
+recipients = "collective_residence_at_opening"
+share_bps = 10000
+
+[[place_grants]]
+amount_per_period_micros = 2185833533022
+part = "02013/at"
+
+[[place_grants]]
+amount_per_period_micros = 1563864365585
+part = "02016/at"
+
+[[place_grants]]
+amount_per_period_micros = 166275725207443
+part = "02020/at"
+
+[[place_grants]]
+amount_per_period_micros = 26654812751647
+part = "02050/at"
+
+[[place_grants]]
+amount_per_period_micros = 1045223422461
+part = "02060/at"
+
+[[place_grants]]
+amount_per_period_micros = 6931706436724
+part = "02063/at"
+
+[[place_grants]]
+amount_per_period_micros = 3535710385033
+part = "02066/at"
+
+[[place_grants]]
+amount_per_period_micros = 6075037717611
+part = "02070/at"
+
+[[place_grants]]
+amount_per_period_micros = 20871658807163
+part = "02090/at"
+
+[[place_grants]]
+amount_per_period_micros = 1795494015146
+part = "02100/at"
+
+[[place_grants]]
+amount_per_period_micros = 2717408421440
+part = "02105/at"
+
+[[place_grants]]
+amount_per_period_micros = 65224611592564
+part = "02110/at"
+
+[[place_grants]]
+amount_per_period_micros = 20337605023673
+part = "02122/at"
+
+[[place_grants]]
+amount_per_period_micros = 16857719123219
+part = "02130/at"
+
+[[place_grants]]
+amount_per_period_micros = 6846653430643
+part = "02150/at"
+
+[[place_grants]]
+amount_per_period_micros = 8677139788105
+part = "02158/at"
+
+[[place_grants]]
+amount_per_period_micros = 1743340458345
+part = "02164/at"
+
+[[place_grants]]
+amount_per_period_micros = 41158401869209
+part = "02170/at"
+
+[[place_grants]]
+amount_per_period_micros = 8354454982477
+part = "02180/at"
+
+[[place_grants]]
+amount_per_period_micros = 14912786609949
+part = "02185/at"
+
+[[place_grants]]
+amount_per_period_micros = 4820856430230
+part = "02188/at"
+
+[[place_grants]]
+amount_per_period_micros = 2497022708580
+part = "02195/at"
+
+[[place_grants]]
+amount_per_period_micros = 10966358302378
+part = "02198/at"
+
+[[place_grants]]
+amount_per_period_micros = 5260380064786
+part = "02220/at"
+
+[[place_grants]]
+amount_per_period_micros = 3004022435884
+part = "02230/at"
+
+[[place_grants]]
+amount_per_period_micros = 10002086153676
+part = "02240/at"
+
+[[place_grants]]
+amount_per_period_micros = 2540523373276
+part = "02275/at"
+
+[[place_grants]]
+amount_per_period_micros = 1472919631646
+part = "02282/at"
+
+[[place_grants]]
+amount_per_period_micros = 10819838561509
+part = "02290/at"
+
+[[place_grants]]
+amount_per_period_micros = 112740674456124
+part = "04013/above"
+
+[[place_grants]]
+amount_per_period_micros = 21777500955311
+part = "04019/above"
+
+[[place_grants]]
+amount_per_period_micros = 533119499341239
+part = "04019/below"
+
+[[place_grants]]
+amount_per_period_micros = 393724904964758
+part = "04025/above"
+
+[[place_grants]]
+amount_per_period_micros = 57367698989891
+part = "04025/below"
+
+[[place_grants]]
+amount_per_period_micros = 22729679556938
+part = "06019/above"
+
+[[place_grants]]
+amount_per_period_micros = 6432089793269
+part = "06019/below"
+
+[[place_grants]]
+amount_per_period_micros = 110602552457854
+part = "06029/above"
+
+[[place_grants]]
+amount_per_period_micros = 70450591236382
+part = "06029/below"
+
+[[place_grants]]
+amount_per_period_micros = 1122696628313347
+part = "06067/above"
+
+[[place_grants]]
+amount_per_period_micros = 134772788887798
+part = "06067/below"
+
+[[place_grants]]
+amount_per_period_micros = 113263695882509
+part = "10003/above"
+
+[[place_grants]]
+amount_per_period_micros = 820266368549359
+part = "11001/at"
+
+[[place_grants]]
+amount_per_period_micros = 182927039464237
+part = "12071/above"
+
+[[place_grants]]
+amount_per_period_micros = 22690467431219
+part = "13245/above"
+
+[[place_grants]]
+amount_per_period_micros = 82194304115419
+part = "13245/below"
+
+[[place_grants]]
+amount_per_period_micros = 63312284893951
+part = "15001/at"
+
+[[place_grants]]
+amount_per_period_micros = 303356176105523
+part = "15003/at"
+
+[[place_grants]]
+amount_per_period_micros = 290883032985
+part = "15005/at"
+
+[[place_grants]]
+amount_per_period_micros = 30723124744471
+part = "15007/at"
+
+[[place_grants]]
+amount_per_period_micros = 17971823910603
+part = "15009/at"
+
+[[place_grants]]
+amount_per_period_micros = 78484234006342
+part = "16001/above"
+
+[[place_grants]]
+amount_per_period_micros = 103201292213550
+part = "17119/above"
+
+[[place_grants]]
+amount_per_period_micros = 119273801932878
+part = "17201/above"
+
+[[place_grants]]
+amount_per_period_micros = 115512465478412
+part = "20177/above"
+
+[[place_grants]]
+amount_per_period_micros = 64071743173453
+part = "20177/below"
+
+[[place_grants]]
+amount_per_period_micros = 67730533710174
+part = "21067/above"
+
+[[place_grants]]
+amount_per_period_micros = 4115363504874
+part = "21117/below"
+
+[[place_grants]]
+amount_per_period_micros = 15169648102100
+part = "22019/above"
+
+[[place_grants]]
+amount_per_period_micros = 32872839260640
+part = "22033/above"
+
+[[place_grants]]
+amount_per_period_micros = 72221629776659
+part = "22051/below"
+
+[[place_grants]]
+amount_per_period_micros = 210705082183513
+part = "24005/above"
+
+[[place_grants]]
+amount_per_period_micros = 797873706251658
+part = "24005/below"
+
+[[place_grants]]
+amount_per_period_micros = 953881820205214
+part = "24031/above"
+
+[[place_grants]]
+amount_per_period_micros = 1460103423381654
+part = "24031/below"
+
+[[place_grants]]
+amount_per_period_micros = 110744442009076
+part = "24043/above"
+
+[[place_grants]]
+amount_per_period_micros = 269534174875246
+part = "24043/below"
+
+[[place_grants]]
+amount_per_period_micros = 174853821156
+part = "25019/at"
+
+[[place_grants]]
+amount_per_period_micros = 82954936676650
+part = "30111/above"
+
+[[place_grants]]
+amount_per_period_micros = 20727842954329
+part = "30111/below"
+
+[[place_grants]]
+amount_per_period_micros = 31105854778632
+part = "31109/above"
+
+[[place_grants]]
+amount_per_period_micros = 56068071863950
+part = "32031/above"
+
+[[place_grants]]
+amount_per_period_micros = 3528398821446
+part = "33009/above"
+
+[[place_grants]]
+amount_per_period_micros = 82440954191849
+part = "35001/above"
+
+[[place_grants]]
+amount_per_period_micros = 244727060267118
+part = "35001/below"
+
+[[place_grants]]
+amount_per_period_micros = 456126301563759
+part = "36001/above"
+
+[[place_grants]]
+amount_per_period_micros = 13882684615954
+part = "36029/above"
+
+[[place_grants]]
+amount_per_period_micros = 65035478721609
+part = "36067/above"
+
+[[place_grants]]
+amount_per_period_micros = 199294229683529
+part = "36067/below"
+
+[[place_grants]]
+amount_per_period_micros = 332326336688206
+part = "36081/at"
+
+[[place_grants]]
+amount_per_period_micros = 86868902737921
+part = "36119/below"
+
+[[place_grants]]
+amount_per_period_micros = 44184613460433
+part = "37051/above"
+
+[[place_grants]]
+amount_per_period_micros = 6194257610259
+part = "37051/below"
+
+[[place_grants]]
+amount_per_period_micros = 28028715128396
+part = "37183/above"
+
+[[place_grants]]
+amount_per_period_micros = 15235597341809
+part = "39113/below"
+
+[[place_grants]]
+amount_per_period_micros = 153742638205187
+part = "40031/above"
+
+[[place_grants]]
+amount_per_period_micros = 63836322493017
+part = "40031/below"
+
+[[place_grants]]
+amount_per_period_micros = 487465186062960
+part = "40109/above"
+
+[[place_grants]]
+amount_per_period_micros = 73069842524798
+part = "40109/below"
+
+[[place_grants]]
+amount_per_period_micros = 13594639647115
+part = "45019/above"
+
+[[place_grants]]
+amount_per_period_micros = 319058304899450
+part = "45079/above"
+
+[[place_grants]]
+amount_per_period_micros = 687962608389
+part = "48141/above"
+
+[[place_grants]]
+amount_per_period_micros = 404530352593278
+part = "48141/below"
+
+[[place_grants]]
+amount_per_period_micros = 39888717154108
+part = "48479/at"
+
+[[place_grants]]
+amount_per_period_micros = 158451446921401
+part = "49035/below"
+
+[[place_grants]]
+amount_per_period_micros = 42272248396432
+part = "49053/above"
+
+[[place_grants]]
+amount_per_period_micros = 62470883846365
+part = "51013/above"
+
+[[place_grants]]
+amount_per_period_micros = 293531955657794
+part = "51013/below"
+
+[[place_grants]]
+amount_per_period_micros = 23837265933688
+part = "51041/above"
+
+[[place_grants]]
+amount_per_period_micros = 657624543586789
+part = "51059/above"
+
+[[place_grants]]
+amount_per_period_micros = 468276518364646
+part = "51059/below"
+
+[[place_grants]]
+amount_per_period_micros = 143444278494776
+part = "51810/above"
+
+[[place_grants]]
+amount_per_period_micros = 43909181863213
+part = "51810/below"
+
+[[place_grants]]
+amount_per_period_micros = 1156903256514
+part = "53011/above"
+
+[[place_grants]]
+amount_per_period_micros = 348524997084442
+part = "53053/at"
+
+[[place_grants]]
+amount_per_period_micros = 374850592517095
+part = "53061/above"
+
+[[place_grants]]
+amount_per_period_micros = 87153206424761
+part = "53063/above"
+
+[[place_grants]]
+amount_per_period_micros = 69386409743509
+part = "53063/below"
+
+[[place_grants]]
+amount_per_period_micros = 29636396447914
+part = "54039/above"
+
+[[place_grants]]
+amount_per_period_micros = 59246122881361
+part = "56021/above"
+
+[[place_grants]]
+amount_per_period_micros = 105497113127240
+part = "56021/below"
+
+# Designed time accounting. Domestic eligibility uses ACS age 16+ controls;
+# external eligibility is a fixed approximation, never a new workforce source.
+[household_time]
+hours_per_eligible_person = 224
+ordinary_protected_hours_per_household = 32
+ordinary_provisioning_hours_per_household = 64
+collective_protected_hours_per_person = 32
+collective_provisioning_hours_per_person = 64
+external_eligible_persons_bps = 8000
+unmet_hours_per_unit = { food = 1 }
+
+[equipment]
+machine_life_periods = 100
+workers_per_machine = { business_services = 40, capital_goods = 4, construction_housing = 4, consumer_goods = 4, energy_utilities = 4, extraction = 4, food = 4, household_services = 40, leisure_hospitality = 40, manufacturing = 4, public_provisioning = 40 }
+installation_hours_per_unit = 32
+installation_inputs = { materials = 4 }
+installation_workforce_hours_bps = 625
+expansion_earnings_fraction_bps = 2500
+
+# Prices change through existing inspectable responsive market policies.
+# Public grants pay provider costs; the small posted public fee is separate.
+
+# What the builder reads of the fixture: each product's label, unit label, grams and opening price,
+# and its cargo class.
+
+[commodity.food]
+cargo_class = "general"
+grams_per_unit = 96
+handling_hours = 5
+handling_units = 52
+kind = "storable"
+label = "Food for one person for a day"
+maximum_price_micros = 7687072
+minimum_price_micros = 480442
+opening_price_micros = 1921768
+price_step_micros = 48044
+unit_label = "person-day food"
+
+[commodity.resources]
+cargo_class = "dry_bulk"
+grams_per_unit = 781
+kind = "storable"
+label = "A minute of extraction's output"
+maximum_price_micros = 12500616
+minimum_price_micros = 781288
+opening_price_micros = 3125154
+price_step_micros = 78128
+unit_label = "extraction minute"
+
+[commodity.materials]
+cargo_class = "general"
+grams_per_unit = 187
+handling_hours = 7
+handling_units = 31
+kind = "storable"
+label = "Supplies for one household for a day"
+maximum_price_micros = 17973212
+minimum_price_micros = 1123325
+opening_price_micros = 4493303
+price_step_micros = 112332
+unit_label = "household-day supplies"
+
+[commodity.equipment]
+cargo_class = "general"
+grams_per_unit = 48188178
+kind = "storable"
+label = "One machine"
+maximum_price_micros = 3084043400704
+minimum_price_micros = 192752712544
+opening_price_micros = 771010850176
+price_step_micros = 19275271254
+unit_label = "machine"
+
+[commodity.utility]
+grams_per_unit = 0
+kind = "utility"
+label = "Utility for one person for a day"
+maximum_price_micros = 4527368
+minimum_price_micros = 282960
+opening_price_micros = 1131842
+price_step_micros = 28296
+unit_label = "person-day utility"
+
+[commodity.housing]
+grams_per_unit = 0
+kind = "utility"
+label = "Housing for one household for a day"
+maximum_price_micros = 30081276
+minimum_price_micros = 1880079
+opening_price_micros = 7520319
+price_step_micros = 188007
+unit_label = "household-day housing"
+
+[commodity.household_services]
+grams_per_unit = 0
+kind = "service"
+label = "A day's care and schooling for one person"
+maximum_price_micros = 89307292
+minimum_price_micros = 5581705
+opening_price_micros = 22326823
+price_step_micros = 558170
+unit_label = "person-day care"
+
+[commodity.business_services]
+grams_per_unit = 0
+kind = "utility"
+label = "Business support, a day's food's worth"
+maximum_price_micros = 7687072
+minimum_price_micros = 480442
+opening_price_micros = 1921768
+price_step_micros = 48044
+unit_label = "business service unit"
+
+[commodity.public_provision]
+grams_per_unit = 0
+kind = "service"
+label = "Public provisioning"
+maximum_price_micros = 4000000
+minimum_price_micros = 250000
+opening_price_micros = 1000000
+price_step_micros = 25000
+unit_label = "person-period provision"
+
+[commodity.consumer_goods]
+cargo_class = "general"
+grams_per_unit = 40
+handling_hours = 5
+handling_units = 52
+kind = "storable"
+label = "Consumer goods, a day's food's worth"
+maximum_price_micros = 7687072
+minimum_price_micros = 480442
+opening_price_micros = 1921768
+price_step_micros = 48044
+unit_label = "consumer goods bundle"
+
+[commodity.leisure]
+grams_per_unit = 0
+kind = "service"
+label = "Leisure and hospitality, a day's food's worth"
+maximum_price_micros = 7687072
+minimum_price_micros = 480442
+opening_price_micros = 1921768
+price_step_micros = 48044
+unit_label = "leisure unit"
+
+[commodity.resource_deposit]
+grams_per_unit = 781
+kind = "storable"
+label = "Finite extractable reserve"
+unit_label = "extraction minute"
+
+[process.food]
+inputs = { business_services = 1228, consumer_goods = 77, household_services = 2, housing = 59, leisure = 16, materials = 208, resources = 34, utility = 199 }
+labor_hours_per_batch = 126
+margin_bps = 2468
+output = "food"
+output_units_per_batch = 5000
+
+[process.extraction]
+inputs = { business_services = 7346, consumer_goods = 297, food = 24, household_services = 2, housing = 274, leisure = 37, materials = 436, resource_deposit = 10000, utility = 724 }
+labor_hours_per_batch = 167
+margin_bps = 877
+output = "resources"
+output_units_per_batch = 10000
+
+[process.energy_utilities]
+inputs = { consumer_goods = 466, food = 6, materials = 255, resources = 7615 }
+labor_hours_per_batch = 281
+margin_bps = 3725
+output = "utility"
+output_units_per_batch = 50000
+
+[process.manufacturing]
+inputs = { business_services = 585, consumer_goods = 39, food = 36, household_services = 2, housing = 31, leisure = 10, resources = 41, utility = 90 }
+labor_hours_per_batch = 51
+margin_bps = 2059
+output = "materials"
+output_units_per_batch = 1000
+
+[process.capital_goods]
+inputs = { business_services = 68596, consumer_goods = 7731, household_services = 77, housing = 3235, leisure = 462, materials = 15472, resources = 476, utility = 3394 }
+labor_hours_per_batch = 7724
+margin_bps = 1778
+output = "equipment"
+output_units_per_batch = 1
+
+[process.construction_housing]
+inputs = { consumer_goods = 97, food = 2, materials = 197, resources = 30 }
+labor_hours_per_batch = 97
+margin_bps = 5586
+output = "housing"
+output_units_per_batch = 1000
+
+[process.household_services]
+inputs = { business_services = 1505, consumer_goods = 95, food = 27, housing = 149, materials = 69, resources = 7, utility = 70 }
+labor_hours_per_batch = 410
+margin_bps = 354
+output = "household_services"
+output_units_per_batch = 800
+
+[process.business_services]
+inputs = { consumer_goods = 129, food = 5, materials = 83, resources = 20 }
+labor_hours_per_batch = 269
+margin_bps = 2955
+output = "business_services"
+output_units_per_batch = 10000
+
+[process.public_provisioning]
+inputs = { business_services = 1782, consumer_goods = 108, food = 85, housing = 185, materials = 70, resources = 24, utility = 247 }
+labor_hours_per_batch = 71
+output = "public_provision"
+output_units_per_batch = 16
+
+[process.consumer_goods]
+inputs = { business_services = 975, food = 5, household_services = 1, housing = 34, leisure = 10, materials = 388, resources = 6, utility = 49 }
+labor_hours_per_batch = 109
+margin_bps = 2056
+output = "consumer_goods"
+output_units_per_batch = 5000
+
+[process.leisure_hospitality]
+inputs = { business_services = 1554, consumer_goods = 34, food = 168, housing = 108, materials = 34, resources = 9, utility = 118 }
+labor_hours_per_batch = 299
+margin_bps = 494
+output = "leisure"
+output_units_per_batch = 5000
+
+[[household_needs]]
+basis = "persons"
+good = "food"
+units_per_basis = 28
+
+[[household_needs]]
+basis = "households"
+good = "materials"
+units_per_basis = 28
+
+[[household_needs]]
+basis = "persons"
+good = "utility"
+units_per_basis = 28
+
+[[household_needs]]
+basis = "households"
+good = "housing"
+units_per_basis = 28
+
+[[household_needs]]
+basis = "persons"
+good = "household_services"
+units_per_basis = 28
+
+[[household_needs]]
+basis = "persons"
+good = "public_provision"
+units_per_basis = 1
+
+[[household_wants]]
+basis = "persons"
+good = "business_services"
+tier = "comfort"
+units_per_basis = 105
+
+[[household_wants]]
+basis = "persons"
+good = "consumer_goods"
+tier = "comfort"
+units_per_basis = 38
+
+[[household_wants]]
+basis = "persons"
+good = "food"
+tier = "comfort"
+units_per_basis = 21
+
+[[household_wants]]
+basis = "persons"
+good = "household_services"
+tier = "comfort"
+units_per_basis = 36
+
+[[household_wants]]
+basis = "persons"
+good = "housing"
+tier = "comfort"
+units_per_basis = 10
+
+[[household_wants]]
+basis = "persons"
+good = "materials"
+tier = "comfort"
+units_per_basis = 9
+
+[[household_wants]]
+basis = "persons"
+good = "utility"
+tier = "comfort"
+units_per_basis = 23
+
+[[household_wants]]
+basis = "persons"
+good = "business_services"
+tier = "luxury"
+units_per_basis = 106
+
+[[household_wants]]
+basis = "persons"
+good = "consumer_goods"
+tier = "luxury"
+units_per_basis = 37
+
+[[household_wants]]
+basis = "persons"
+good = "food"
+tier = "luxury"
+units_per_basis = 15
+
+[[household_wants]]
+basis = "persons"
+good = "household_services"
+tier = "luxury"
+units_per_basis = 25
+
+[[household_wants]]
+basis = "persons"
+good = "housing"
+tier = "luxury"
+units_per_basis = 8
+
+[[household_wants]]
+basis = "persons"
+good = "leisure"
+tier = "luxury"
+units_per_basis = 1331
+
+[[household_wants]]
+basis = "persons"
+good = "materials"
+tier = "luxury"
+units_per_basis = 6
+
+[[household_wants]]
+basis = "persons"
+good = "utility"
+tier = "luxury"
+units_per_basis = 16
+
+# Counterpart shares are game allocations, not measured class or sector shares.
+# Function order (Ord of the twelve trades): business, capital, housing, consumer
+# goods, distribution, energy, extraction, food, household services, leisure,
+# manufacturing, public. Membership lives separately.
+
+[counterpart."canada"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 8333
+export_bps = { business_services = 1440, consumer_goods = 721, equipment = 1574, food = 713, materials = 1084, resources = 1747 }
+function_weights_bps = [1537, 374, 663, 285, 1930, 71, 53, 232, 3711, 11, 448, 685]
+price_scale_bps = 10000
+
+[counterpart."mexico"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 2916
+export_bps = { business_services = 290, consumer_goods = 145, equipment = 317, food = 143, materials = 218, resources = 351 }
+function_weights_bps = [1632, 338, 659, 243, 1930, 70, 50, 230, 3728, 10, 425, 685]
+price_scale_bps = 10000
+
+[counterpart."china"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 4166
+export_bps = { business_services = 30, consumer_goods = 15, equipment = 32, food = 15, materials = 22, resources = 36 }
+function_weights_bps = [1642, 312, 658, 224, 1930, 70, 49, 227, 3786, 9, 408, 685]
+price_scale_bps = 10000
+
+[counterpart."russia"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 4583
+export_bps = { business_services = 330, consumer_goods = 165, equipment = 361, food = 164, materials = 249, resources = 401 }
+function_weights_bps = [1627, 335, 659, 242, 1930, 70, 50, 229, 3741, 10, 422, 685]
+price_scale_bps = 10000
+
+[counterpart."india"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 2083
+export_bps = { business_services = 29, consumer_goods = 14, equipment = 31, food = 14, materials = 22, resources = 35 }
+function_weights_bps = [1643, 313, 658, 224, 1930, 70, 49, 227, 3784, 9, 408, 685]
+price_scale_bps = 10000
+
+[counterpart."japan"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 9166
+export_bps = { business_services = 519, consumer_goods = 260, equipment = 567, food = 257, materials = 391, resources = 630 }
+function_weights_bps = [1604, 330, 659, 245, 1930, 70, 49, 228, 3770, 10, 420, 685]
+price_scale_bps = 10000
+
+[counterpart."european_union"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 9166
+export_bps = { business_services = 140, consumer_goods = 70, equipment = 153, food = 70, materials = 106, resources = 170 }
+function_weights_bps = [1633, 315, 658, 228, 1930, 70, 49, 227, 3786, 10, 409, 685]
+price_scale_bps = 10000
+
+[counterpart."remaining_europe"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 5833
+export_bps = { business_services = 340, consumer_goods = 170, equipment = 372, food = 169, materials = 256, resources = 413 }
+function_weights_bps = [1623, 333, 659, 240, 1930, 70, 49, 228, 3753, 10, 420, 685]
+price_scale_bps = 10000
+
+[counterpart."latin_america_caribbean"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 2916
+export_bps = { business_services = 69, consumer_goods = 34, equipment = 75, food = 34, materials = 52, resources = 83 }
+function_weights_bps = [1641, 316, 658, 227, 1930, 70, 50, 227, 3777, 9, 410, 685]
+price_scale_bps = 10000
+
+[counterpart."west_asia_north_africa"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 3333
+export_bps = { business_services = 63, consumer_goods = 32, equipment = 69, food = 31, materials = 47, resources = 76 }
+function_weights_bps = [1641, 316, 658, 226, 1930, 70, 49, 227, 3779, 9, 410, 685]
+price_scale_bps = 10000
+
+[counterpart."sub_saharan_africa"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 1666
+export_bps = { business_services = 33, consumer_goods = 17, equipment = 37, food = 17, materials = 25, resources = 41 }
+function_weights_bps = [1643, 313, 658, 225, 1930, 70, 49, 227, 3782, 9, 409, 685]
+price_scale_bps = 10000
+
+[counterpart."remaining_asia_pacific"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 3750
+export_bps = { business_services = 31, consumer_goods = 16, equipment = 34, food = 16, materials = 24, resources = 38 }
+function_weights_bps = [1642, 312, 658, 224, 1930, 70, 49, 227, 3785, 10, 408, 685]
+price_scale_bps = 10000
+
+# Separate dependencies use source persons when available. The missing UM
+# observation stays missing; its 50 temporary game residents are Designed.
+[dependency]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 10000
+export_bps = { business_services = 0, consumer_goods = 0, equipment = 0, food = 0, materials = 0, resources = 0 }
+function_weights_bps = [1644, 310, 658, 222, 1930, 70, 49, 226, 3791, 9, 406, 685]
+price_scale_bps = 10000
+missing_population_game_persons = 50
+
+# Designed terms captured in existing NationalGamePolicy artifact.
+[aid]
+evidence_class = "Designed"
+donor_actor = 2616301
+local_recipient_actor = 2616302
+remote_recipient_actor = 1703101
+donor_contributor_id = 2616301
+local_recipient_contributor_id = 2616302
+remote_recipient_contributor_id = 1703101
+organization_opening_cash_micros = 1000000
+maximum_cash_micros = 1450000000
+initial_food_quantity = 1
+initial_cash_micros = 0
+local_cash_receiving_consent = "accept"
+remote_cash_receiving_consent = "accept"
+fulfillment_hours_per_unit = 2
+maximum_quantity = 4
+
+# Designed consent and organization commitments; real time remains finite.
+[organizer]
+evidence_class = "Designed"
+venue_log_reader = "controlled_organizer"
+organization_label = "Wayne Organizing Collective"
+workplace_partner_label = "Wayne Workplace Committee"
+neighborhood_partner_label = "Wayne Neighborhood Contact Group"
+local_partner_label = "Wayne Local Aid Partners"
+remote_partner_label = "Cook Independent Solidarity Partners"
+contributor_hours_cap = 8
+inquiry_hours = 2
+contact_hours = 2
+partner_response_hours = 2
+aid_coordination_hours = 2
+initial_agreement_through_period = 1
+contact_renewal_periods = 1
+local_receiving_consent = "accept"
+remote_receiving_consent = "accept"
+# Independent Designed cash consent; protected material needs remain mandatory.
+collection_cash_consent = "accept"
+collection_initial_cash_micros = 280000000
+collection_maximum_cash_micros = 1450000000
+collection_protected_cash_floor_micros = 0
+collection_hours = 2
+workplace_policy = "participate"
+neighborhood_policy = "participate"
+local_policy = "participate"
+remote_policy = "participate"
+
+[organizer.local_report_sharing]
+evidence_class = "Designed"
+food = ["food"]
+essential_services = ["utility", "housing", "household_services", "public_provision"]
+participation_time = true
+
+[organizer.remote_report_sharing]
+evidence_class = "Designed"
+food = ["food"]
+essential_services = ["utility", "housing", "household_services", "public_provision"]
+participation_time = true
+
+[grain]
+evidence_class = "Designed"
+generation = "state_faf_reserve_positions"
+protected_counties = ["17031", "26163"]
+hub_selection = "largest_observed_population_then_geoid"
+access_capacity = "captured_hub_lane"
+capacity_refinement = "essential_food_lower_bound_first_fit"
+
+# The food figures that fold the counties into places (O15): the shipped food recipe, need and grams.
+[grain.basis]
+food_labor_hours_per_batch = 16
+food_output_units_per_batch = 16
+food_units_per_person = 1
+food_grams_per_unit = 14000
+
+[companies]
+# Designed opening employment shares. Whole sites can overshoot these targets.
+opening_employment_bps = [3500, 3500, 3000]
+# Designed share of each subsidiary's spendable cash above its captured operating floor.
+opening_treasury_bps = 0
+portfolio_weights = [[70, 30, 0, 0], [10, 70, 15, 5], [60, 25, 15, 0], [10, 10, 60, 20]]
+high_utilization_bps = 8000
+history_periods = 3
+modest_expansion_bps = 5000
+# Existing national-world-v7 physical geography namespace. Company policy retains its own full source digest.
+inherited_grain_policy_sha256 = [0xa4, 0x33, 0x05, 0xed, 0x1d, 0x0e, 0x95, 0xf9, 0xd7, 0xdf, 0x6b, 0x8a, 0xac, 0xe5, 0xa8, 0xf9, 0x79, 0x08, 0x26, 0xf8, 0xc4, 0xc0, 0xb3, 0xb0, 0x6d, 0x1d, 0x54, 0x67, 0x51, 0xdc, 0x4f, 0x03]
+
+[household_lifecycle]
+# Designed initial birthdays fill the remaining four-week periods of each age band.
+# Survivors finish the band within its full width. Subsequent entrants keep their due period.
+initial_age_distribution = "uniform_remaining_birthdays"
+# Designed common four-week gameplay rates, per million residents in the specified
+# opening band. Birth exposure is residents age 18–64. Death exposures follow
+# under 16, 16–17, 18–64 and 65+. These terms are shared across all markets.
+births_per_million_working_age_per_period = 1350
+deaths_per_million_per_period = [15, 20, 340, 3250]
+# Designed foreign/dependency mix within the pre-existing 16+ control, in the
+# order 16–17, 18–64 and 65+. Domestic county ages use the captured ACS margins.
+external_eligible_age_bps = [400, 8000, 1600]
+
+# Separate no-earner nonowner households drawn from Wayne's reserve residents.
+[household_support_claimant]
+evidence_class = "Designed"
+county = "26163"
+households = 2
+reserve_persons = 2
+
+# The two household bodies separately authorize their delegations for this hearing.
+# The minutes grant a place at the next review. They cannot spend county money.
+[organizer.hearing]
+evidence_class = "Designed"
+county_geoid = "26163"
+period = 2
+review_period = 3
+attendance_hours = 2
+claimant_label = "Wayne Relief Claimants Assembly"
+claimant_claim = "Keep current claimants on the relief roll while the county reviews their cases."
+partner_claim = "Hear the cases of residents who received no county support."
+claimant_mandate = "either_procedural_offer"
+partner_mandate = { settle = "joint_minutes" }
+claimant_delegation = { delegate_label = "Claimants' meeting secretary", authorizing_households = 2 }
+partner_delegation = { delegate_label = "Case delegate for the aid partners", authorizing_households = 3 }
+
+# The City PD's books. The force is already employed inside Wayne's public workplaces, so
+# its payroll is named there (positions x a period's hours x the wage) and not paid twice.
+# The appropriation pays for the visits allowed in a period at the price of a visit hour.
+[city_pd]
+evidence_class = "Designed"
+positions = 3529
+positions_source = "City of Detroit, City Council Legislative Policy Division, budget analysis of 21 March 2025: Police Department, adopted positions, fiscal year 2025"
+visits_per_period = 1
+visit_hours = 1
+
+# The county review. The county ranks its households by the wage tax each paid and pays relief
+# units down that list; the organizer can reach one household in a named position per period. The
+# price of a unit is derived from the opening, not written here. The two body labels repeat the
+# labels the hearing already uses and are checked against them.
+[county_review]
+evidence_class = "Designed"
+county = "26163"
+first_session_period = 4
+session_hours = 2
+bring_hours = 2
+administration_label = "Wayne County administration"
+claimants_body_label = "Wayne Relief Claimants Assembly"
+aid_body_label = "Wayne Local Aid Partners"
+
+# Luxury scales: an account whose money passes its three tiers buys its luxuries again (call 20).
+[luxury_scale.by_account]
+"02013/at:NoEarnerOwner" = 19947
+"02016/at:NoEarnerOwner" = 22429
+"02068/at:EarningOwner" = 12042
+"02068/at:NoEarnerOwner" = 18265
+"02164/at:EarningOwner" = 11468
+"02185/at:EarningOwner" = 10924
+"02185/at:NoEarnerOwner" = 13163
+"04013/below:NoEarnerOwner" = 11261
+"06073/at:NoEarnerOwner" = 11156
+"06075/at:EarningOwner" = 19846
+"06075/at:NoEarnerOwner" = 27775
+"06085/below:EarningBetterPaidForty" = 13863
+"06085/below:EarningOwner" = 30146
+"06085/below:NoEarnerOwner" = 31135
+"08031/above:EarningOwner" = 10519
+"08031/above:NoEarnerOwner" = 12730
+"08031/below:EarningOwner" = 10191
+"08031/below:NoEarnerOwner" = 15276
+"09110/above:EarningOwner" = 12751
+"09110/above:NoEarnerOwner" = 13894
+"09190/above:NoEarnerOwner" = 11886
+"09190/below:EarningOwner" = 15525
+"09190/below:NoEarnerOwner" = 25756
+"10003/below:EarningOwner" = 13891
+"11001/at:EarningOwner" = 12213
+"11001/at:NoEarnerOwner" = 12580
+"13121/at:EarningOwner" = 12607
+"13121/at:NoEarnerOwner" = 17745
+"15005/at:EarningOwner" = 13035
+"15005/at:NoEarnerOwner" = 16570
+"17031:EarningOwner" = 12375
+"17031:NoEarnerOwner" = 13947
+"17043/above:EarningOwner" = 11040
+"17043/above:NoEarnerOwner" = 11918
+"18089/above:EarningOwner" = 10206
+"18089/above:NoEarnerOwner" = 10132
+"18097/above:EarningOwner" = 13713
+"18097/above:NoEarnerOwner" = 11919
+"18097/below:NoEarnerOwner" = 10559
+"20091/below:EarningOwner" = 10941
+"20091/below:NoEarnerOwner" = 16493
+"21111/above:NoEarnerOwner" = 10082
+"23005/below:NoEarnerOwner" = 10380
+"24005/above:EarningOwner" = 11775
+"24031/below:EarningOwner" = 11240
+"24031/below:NoEarnerOwner" = 11678
+"25017/above:NoEarnerOwner" = 11295
+"25017/below:EarningOwner" = 19933
+"25017/below:NoEarnerOwner" = 19060
+"25025/at:EarningBetterPaidForty" = 10364
+"25025/at:EarningOwner" = 28282
+"25025/at:NoEarnerOwner" = 30359
+"26125/below:NoEarnerOwner" = 12113
+"27053/above:EarningOwner" = 12986
+"27053/above:NoEarnerOwner" = 13489
+"29095/above:EarningOwner" = 12032
+"29095/above:NoEarnerOwner" = 11822
+"29189/above:EarningOwner" = 11727
+"29189/above:NoEarnerOwner" = 15248
+"29189/below:NoEarnerOwner" = 10261
+"31055/above:EarningOwner" = 11485
+"31055/above:NoEarnerOwner" = 11479
+"33009/below:NoEarnerOwner" = 10196
+"33011/above:NoEarnerOwner" = 12678
+"33011/below:EarningOwner" = 12176
+"33011/below:NoEarnerOwner" = 14026
+"34003/above:EarningOwner" = 10767
+"34003/above:NoEarnerOwner" = 12461
+"34003/below:NoEarnerOwner" = 11912
+"36047/above:NoEarnerOwner" = 10765
+"36061/at:EarningOwner" = 14808
+"36061/at:NoEarnerOwner" = 32004
+"36119/above:EarningOwner" = 10189
+"36119/above:NoEarnerOwner" = 13212
+"37119/below:EarningOwner" = 10590
+"37119/below:NoEarnerOwner" = 16613
+"37183/below:EarningOwner" = 10839
+"37183/below:NoEarnerOwner" = 14031
+"39049/above:EarningOwner" = 12021
+"39049/above:NoEarnerOwner" = 12420
+"39049/below:NoEarnerOwner" = 10163
+"39061/above:EarningOwner" = 12160
+"39061/above:NoEarnerOwner" = 13738
+"41051/below:EarningOwner" = 10900
+"41051/below:NoEarnerOwner" = 11559
+"42003/below:EarningOwner" = 11618
+"42003/below:NoEarnerOwner" = 13523
+"42101/above:EarningOwner" = 14479
+"42101/above:NoEarnerOwner" = 11632
+"42101/below:EarningOwner" = 10809
+"42101/below:NoEarnerOwner" = 14654
+"44007/above:NoEarnerOwner" = 10687
+"48085/below:EarningOwner" = 14227
+"48085/below:NoEarnerOwner" = 18105
+"48113/at:EarningOwner" = 10687
+"48113/at:NoEarnerOwner" = 13579
+"48201/at:EarningOwner" = 11517
+"48201/at:NoEarnerOwner" = 10186
+"48245/above:EarningOwner" = 11069
+"48439/below:NoEarnerOwner" = 10157
+"48453/above:EarningOwner" = 13042
+"48453/above:NoEarnerOwner" = 16005
+"48453/below:NoEarnerOwner" = 13330
+"49035/above:NoEarnerOwner" = 15890
+"51013/above:EarningOwner" = 10046
+"51013/below:EarningOwner" = 25016
+"51013/below:NoEarnerOwner" = 21254
+"51059/above:EarningOwner" = 13719
+"51059/above:NoEarnerOwner" = 16738
+"53033/at:EarningOwner" = 20234
+"53033/at:NoEarnerOwner" = 27094
+"55025/below:NoEarnerOwner" = 11441
+"55079/above:EarningOwner" = 12164
+"55079/above:NoEarnerOwner" = 11485
+"55079/below:NoEarnerOwner" = 10403
